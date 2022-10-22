@@ -1,5 +1,8 @@
 fn main() {
-    println!("Hello, world!");
+    let s: String = get_primes::get_primes(25).iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<String>>().join(", ");
+    println!("{}", s);
 }
 
 mod get_primes {
