@@ -117,6 +117,9 @@ mod get_primes {
             assert_eq!(sqrt_floor(101), 10);
             assert_eq!(sqrt_floor(MAX), TOP_ROOT_OF_U32 - 1);
             assert_eq!(sqrt_floor(MAX - 1), TOP_ROOT_OF_U32 - 1);
+            assert_eq!(sqrt_floor(0xffff * 0xffff), 0xffff);
+            assert_eq!(sqrt_floor(0xffff * 0xffff - 1), 0xfffe);
+            assert_eq!(sqrt_floor(0xfffe * 0xfffe), 0xfffe);
         }
     }
 
