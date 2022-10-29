@@ -15,7 +15,7 @@ mod get_primes {
     // were a value v <= max_prime that satisfies d * prime == v,
     // d < prime. The value v would have been marked as non-prime
     // when d or one of its factors would be considered for removing
-    // multitudes.
+    // multituples.
 
     use std::cmp::min;
 
@@ -26,15 +26,15 @@ mod get_primes {
             return vec![];
         }
         let mut prime_list: Vec<u32> = (2 ..= prime_list_upper_bound).collect();
-        let filter_upper_bound = sqrt_floor(prime_list_upper_bound);
-        let mut filter_index = 0;
+        let max_prime = sqrt_floor(prime_list_upper_bound);
+        let mut prime_index = 0;
         loop {
-            let filter = prime_list[filter_index];
-            if filter > filter_upper_bound {
+            let prime = prime_list[prime_index];
+            if prime > max_prime {
                 break;
             }
-            prime_list.retain(|e| ! ((e % filter == 0) && (e / filter >= 2)));
-            filter_index += 1;
+            prime_list.retain(|e| ! ((e % prime == 0) && (e / prime >= 2)));
+            prime_index += 1;
         }
         return prime_list;
     }
@@ -46,7 +46,9 @@ mod get_primes {
     //
     // We prove now that bisection always ends properly with min_root + 1 == top.
     // If for some k we have min_root + k == top, then bisection produces
-    // middle := (2 * min_root + k) / 2 == min_root + k / 2.
+    // middle := (2 * min_root + k) / 2 == min_root + k / 2 where / is rounding-down
+    // integer division.
+    //
     // If k >= 2, we know that the distance between 0 and k/2 and
     // the distance between k/2 and k will be strictly smaller than k and that
     // neither of these distances will be zero. These are true because k / 2 >= 1.
@@ -57,10 +59,7 @@ mod get_primes {
         }
         let mut min_root: u32 = 1;
         let mut top: u32 = min(v, TOP_ROOT_OF_U32);
-        loop {
-            if top == (min_root + 1) {
-                return min_root;
-            }
+        while top != (min_root + 1) {
             let middle = (min_root + top) / 2;
             if middle * middle <= v {
                 min_root = middle;
@@ -68,6 +67,7 @@ mod get_primes {
                 top = middle;
             }
         }
+        return min_root;
     }
 
     #[cfg(test)]
