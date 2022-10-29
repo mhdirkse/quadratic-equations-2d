@@ -1,8 +1,8 @@
 fn main() {
-    let s: String = get_primes::get_primes(25).iter()
+    let s: Vec<String> = get_primes::get_primes(25).iter()
         .map(|p| p.to_string())
-        .collect::<Vec<String>>().join(", ");
-    println!("{}", s);
+        .collect::<Vec<String>>();
+    println!("{}", format_table::make_table(&s, ", ", 4, ",\n"));
 }
 
 mod get_primes {
@@ -117,6 +117,62 @@ mod get_primes {
             assert_eq!(get_primes(9), vec![2, 3, 5, 7]);
             assert_eq!(get_primes(10), vec![2, 3, 5, 7]);
             assert_eq!(get_primes(25), vec![2, 3, 5, 7, 11, 13, 17, 19, 23]);
+        }
+    }
+}
+
+mod format_table {
+    pub fn make_table(v: &Vec<String>, field_delim: &str, num_per_line: u32, line_delim: &str) -> String {
+        if num_per_line <= 1 {
+            panic!("Using make_table only makes sense if there is more than one item per line, got {}", num_per_line);
+        }
+        let mut result = String::new();
+        let len = v.len() as u32;
+        for i in 0 .. len {
+            result.push_str(&v[i as usize]);
+            if i < (len - 1) {
+                if i % num_per_line == (num_per_line - 1) {
+                    result.push_str(line_delim);
+                } else {
+                    result.push_str(field_delim);
+                }
+            }
+        }
+        return result;
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::make_table;
+
+        #[test]
+        fn empty() {
+            let input: Vec<String> = vec![];
+            assert_eq!(String::from(""), make_table(&input, ", ", 2, "\n"));
+        }
+
+        #[test]
+        fn one() {
+            let input: Vec<String> = vec![String::from("item")];
+            assert_eq!(String::from("item"), make_table(&input, ", ", 2, "\n"));
+        }
+
+        #[test]
+        fn two_on_one_line() {
+            let input: Vec<String> = vec![String::from("first"), String::from("second")];
+            assert_eq!("first, second", make_table(&input, ", ", 2, "\n"));
+        }
+
+        #[test]
+        fn two_lines() {
+            let input: Vec<String> = vec![String::from("first"), String::from("second"), String::from("third")];
+            assert_eq!("first, second\nthird", make_table(&input, ", ", 2, "\n"));
+        }
+
+        #[test]
+        fn three_per_line() {
+            let input: Vec<String> = vec![String::from("first"), String::from("second"), String::from("third"), String::from("fourth")];
+            assert_eq!("first, second, third\nfourth", make_table(&input, ", ", 3, "\n"));
         }
     }
 }
