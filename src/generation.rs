@@ -1,28 +1,42 @@
 use far;
+use std::env;
+use std::fs;
+use std::path::Path;
 
 #[derive(far::Render)]
 struct Replacements {
     primes: String,
-    num_primes: u32
+    num_primes: u32,
+    primes_bound: u32
 }
 
+const TEMPLATE: &str = "// THIS IS A GENERATED FILE. DO NOT MODIFY.
+
+pub const PRIMES_BOUND: u32 = {{primes_bound}};
+pub const NUM_PRIMES: u32 = {{num_primes}};
+pub const PRIMES: [u32; {{num_primes}}] = [{{primes}}];";
+
 #[allow(dead_code)]
-fn get_primes_program() -> String {
-    let primes_strings: Vec<String> = get_primes::get_primes(25).iter()
+fn write_primes_program(primes_bound: u32, name: &str) {
+    let primes_strings: Vec<String> = get_primes::get_primes(primes_bound).iter()
         .map(|p| p.to_string())
         .collect::<Vec<String>>();
-    let primes_table = format_table::make_table(&primes_strings, ", ", 4, ",\n    ");
-    let template = "// THIS IS A GENERATED FILE. DO NOT MODIFY.\n\npub const PRIMES: [u32; {{num_primes}}] = [{{primes}}];";
+    let primes_table = format_table::make_table(&primes_strings, ", ", 10, ",\n    ");
     let cached_template;
-    match far::find(template) {
+    match far::find(TEMPLATE) {
         Ok(v) => cached_template = v,
         Err(e) => panic!("Could not get template object: {}", e.to_string())
     };
     let replacements = Replacements {
         primes: primes_table,
-        num_primes: primes_strings.len() as u32
+        num_primes: primes_strings.len() as u32,
+        primes_bound
     };
-    return cached_template.replace(&replacements);
+    let program: String = cached_template.replace(&replacements);
+    let out_dir = env::var_os("OUT_DIR").unwrap();
+    let fname = String::from(name) + ".rs";
+    let dest_path = Path::new(&out_dir).join(&fname);
+    fs::write(&dest_path, program).unwrap();
 }
 
 mod get_primes {
@@ -39,7 +53,7 @@ mod get_primes {
 
     use std::cmp::min;
 
-    const TOP_ROOT_OF_U32: u32 = (1 as u32) << 16;
+    pub const TOP_ROOT_OF_U32: u32 = (1 as u32) << 16;
 
     pub fn get_primes(prime_list_upper_bound: u32) -> Vec<u32> {
         if prime_list_upper_bound <= 1 {
@@ -134,6 +148,8 @@ mod get_primes {
             assert_eq!(get_primes(0), vec![]);
             assert_eq!(get_primes(1), vec![]);
             assert_eq!(get_primes(2), vec![2]);
+            // Test that the upper bound is included if it is a prime
+            assert_eq!(get_primes(11), vec![2, 3, 5, 7, 11]);
             assert_eq!(get_primes(9), vec![2, 3, 5, 7]);
             assert_eq!(get_primes(10), vec![2, 3, 5, 7]);
             assert_eq!(get_primes(25), vec![2, 3, 5, 7, 11, 13, 17, 19, 23]);

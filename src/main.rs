@@ -1,7 +1,7 @@
-include!(concat!(env!("OUT_DIR"), "/primes.rs"));
-
+// Added only to have the unit tests
 mod generation;
+mod primes;
 
 pub fn main() {
-    println!("{}", PRIMES[2]);
+    // TODO: Add some logic here.
 }

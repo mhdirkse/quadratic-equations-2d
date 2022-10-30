@@ -1,12 +1,9 @@
-use std::env;
-use std::fs;
-use std::path::Path;
-
 include!("src/generation.rs");
 
+use get_primes::TOP_ROOT_OF_U32;
+
 fn main() {
-    let out_dir = env::var_os("OUT_DIR").unwrap();
-    let dest_path = Path::new(&out_dir).join("primes.rs");
-    fs::write(&dest_path, get_primes_program()).unwrap();
+    write_primes_program(25, "primes25");
+    write_primes_program(TOP_ROOT_OF_U32, "primes");
     println!("cargo:rerun-if-changed=build.rs");
 }
