@@ -13,5 +13,8 @@ lalrpop = "0.19"
 far = "0.2.1"
 lalrpop-util = {version = "0.19", features = ["lexer"]}
 regex = "1"
+num-traits = "0.2"
+num-rational = "0.4"
 
-[features]
+[dev-dependencies]
+fail = "0.5"
