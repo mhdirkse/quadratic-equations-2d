@@ -1,10 +1,32 @@
-use std::str::FromStr;
+use crate::expression::Expression;
+use crate::expression::Composite;
+use crate::expression::Operator;
 
 grammar;
 
-pub Term: i32 = {
-    <n:Num> => n,
-    "(" <t:Term> ")" => t,
+pub Expr: Box<Expression> = {
+    Expr ExprOp Factor => Box::new(Expression::Composite(Composite::new(<>))),
+    Factor
 };
 
-Num: i32 = <s:r"[0-9]+"> => i32::from_str(s).unwrap();
+ExprOp: Operator = {
+    "+" => Operator::PLUS,
+    "-" => Operator::MINUS
+};
+
+Factor: Box<Expression> = {
+    Factor FactorOp Term => Box::new(Expression::Composite(Composite::new(<>))),
+    Term
+};
+
+FactorOp: Operator = {
+    "*" => Operator::MULT,
+    "/" => Operator::DIV
+};
+
+pub Term: Box<Expression> = {
+    <n:Num> => Box::new(Expression::Number(n)),
+    "(" <e:Expr> ")" => e
+};
+
+Num: String = <s:r"[0-9]+"> => String::from(s);
