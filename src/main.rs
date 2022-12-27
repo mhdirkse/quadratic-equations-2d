@@ -6,6 +6,7 @@ mod generation;
 mod primes;
 mod expression;
 mod parser;
+mod roots;
 
 pub fn main() {
     println!("{}", lang::TermParser::new().parse("(5)").is_ok());
