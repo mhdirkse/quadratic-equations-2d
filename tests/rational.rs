@@ -11,6 +11,13 @@ fn automatically_simplified() {
 }
 
 #[test]
+fn automatically_denom_positive() {
+    let f = Rational32::new(1, -1);
+    assert_eq!(f.numer(), &-1);
+    assert_eq!(f.denom(), &1);
+}
+
+#[test]
 fn big_automatically_simplified() {
     let biggest_prime: i32 = 65521;
     let n = 13 * biggest_prime;

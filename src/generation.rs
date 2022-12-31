@@ -39,7 +39,7 @@ fn write_primes_program(primes_bound: u32, name: &str) {
     fs::write(&dest_path, program).unwrap();
 }
 
-mod get_primes {
+pub mod get_primes {
     // Calculate all prime numbers that are at most max_prime.
     //
     // Store all numbers from 2 to max_prime. For each prime,
@@ -87,7 +87,7 @@ mod get_primes {
     // the distance between k/2 and k will be strictly smaller than k and that
     // neither of these distances will be zero. These are true because k / 2 >= 1.
     // and because k - k/2 >= 1 for k >= 3.
-    fn sqrt_floor(v: u32) -> u32 {
+    pub fn sqrt_floor(v: u32) -> u32 {
         if (v == 0) || (v == 1) {
             return v;
         }
