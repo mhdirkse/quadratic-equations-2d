@@ -1,5 +1,5 @@
-// Manages field extensions. We need to extend the field of
-// rational numbers three times.
+// Calculate the square root of a rational such that only the root
+// of a positive integer appears in the result.
 
 use ::num_rational::Rational32;
 use num_traits::Zero;
