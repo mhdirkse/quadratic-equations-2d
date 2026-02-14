@@ -1,26 +1,24 @@
 use std::rc::Rc;
+use std::cell::RefCell;
 use std::fmt::Debug;
-use std::fmt::Formatter;
-use std::fmt::DebugList;
 use num_rational::Rational32;
-use std::fmt;
 
 pub type Base = Rational32;
 
 #[derive(Clone)]
 #[derive(Debug)]
 pub struct FieldTower {
-    data: Rc<FieldTowerData>
-}
-
-pub struct FieldValue {
-    context: FieldTower,
-    value: RawFieldValue
+    data: Rc<RefCell<FieldTowerData>>
 }
 
 #[derive(Debug)]
 struct FieldTowerData {
     roots: Vec<RawFieldValue>
+}
+
+pub struct FieldValue {
+    context: FieldTower,
+    value: RawFieldValue
 }
 
 #[derive(Debug)]
@@ -37,15 +35,13 @@ struct RawExtendedValue {
 
 impl FieldTower {
     pub fn new() -> Self {
-        let data: FieldTowerData = FieldTowerData {
-            roots: vec![]
-        };
-        return FieldTower {data: Rc::new(data)};
+        let data: FieldTowerData = FieldTowerData {roots: vec![]};
+        return FieldTower {data: Rc::new(RefCell::new(data))};
     }
 
     pub fn value(&self, base: Base) -> FieldValue {
         return FieldValue {
-            context: FieldTower {data: self.data.clone()},
+            context: self.clone(),
             value: RawFieldValue::BASIC(base)
         };
     }
@@ -54,16 +50,16 @@ impl FieldTower {
         if value.context != *self {
             panic!("Cannot add root because of field tower mismatch");
         } else {
-            self.data.roots.push(clone(&value.value));
+            (*self.data).borrow_mut().roots.push(clone(&value.value));
         }
     }
 }
 
 impl PartialEq for FieldTower {
     fn eq(&self, other: &Self) -> bool {
-        let my_data: &Rc<FieldTowerData> = &self.data;
-        let other_data: &Rc<FieldTowerData> = &other.data;
-        return Rc::<FieldTowerData>::ptr_eq(my_data, other_data);
+        let my_data: &Rc<RefCell<FieldTowerData>> = &self.data;
+        let other_data: &Rc<RefCell<FieldTowerData>> = &other.data;
+        return Rc::<RefCell<FieldTowerData>>::ptr_eq(my_data, other_data);
     }
 }
 
@@ -115,29 +111,24 @@ impl FieldValue {
     }
 }
 
-impl Debug for FieldValue {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl ToString for FieldValue {
+    fn to_string(&self) -> String {
         let value = &self.value;
-        add_fmt_entries(value, self.context, "", &mut f);
-        return Ok(());
+        let context = &self.context;
+        return to_string(&value, &context);
     }
 }
 
-fn add_fmt_entries(value: &RawFieldValue, field_tower: FieldTower, suffix: &str, f: &mut Formatter<'_>) {
-    match value {        
-        RawFieldValue::BASIC(base) => {
-            f.write_fmt(format_args!("{}", base));
-        }
+fn to_string(value: &RawFieldValue, context: &FieldTower) -> String {
+    match value {
+        RawFieldValue::BASIC(base) => base.to_string(),
         RawFieldValue::EXTENDED(extended) => {
-            let raw_root: &RawFieldValue = field_tower.data.roots[value.num_extensions()-1];
-            let root_field_value: FieldValue = FieldValue {
-                context: field_tower,
-                value: clone(raw_root)
-            };
-            let root_suffix: String = format!("sqrt({})", root_field_value);
-            add_fmt_entries(&extended.base, field_tower, "", &mut f);
-            f.write_fmt(format_args!("+"));
-            add_fmt_entries(&extended.extension, field_tower, &root_suffix, &mut f);
+            let base_str = to_string(&extended.base, &context);
+            let extended_coeff_str = to_string(&extended.extension, &context);
+            let root_index = value.num_extensions() as usize - 1;
+            let root_of: &RawFieldValue = &context.data.borrow().roots[root_index];
+            let root_of_str = to_string(&root_of, &context);
+            return format!("{}+{}*sqrt({})", base_str, extended_coeff_str, root_of_str);
         }
     }
 }
@@ -188,6 +179,6 @@ mod test {
             context: tower,
             value: raw_test_value
         };
-        assert_eq!("[3,5sqrt(2)]", format!("{}", test_value));
+        assert_eq!("3+5*sqrt(2)", test_value.to_string());
     }
 }
