@@ -1,8 +1,9 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt::Debug;
+use std::ops::Add;
 use num_rational::Rational32;
-
+use num_traits::CheckedAdd;
 pub type Base = Rational32;
 
 #[derive(Clone)]
@@ -21,12 +22,14 @@ pub struct FieldValue {
     value: RawFieldValue
 }
 
+#[derive(Clone)]
 #[derive(Debug)]
 enum RawFieldValue {
     BASIC(Base),
     EXTENDED(RawExtendedValue)
 }
 
+#[derive(Clone)]
 #[derive(Debug)]
 struct RawExtendedValue {
     base: Box<RawFieldValue>,
@@ -50,7 +53,7 @@ impl FieldTower {
         if value.context != *self {
             panic!("Cannot add root because of field tower mismatch");
         } else {
-            (*self.data).borrow_mut().roots.push(clone(&value.value));
+            self.data.borrow_mut().roots.push(value.value.clone());
         }
     }
 }
@@ -89,27 +92,128 @@ impl RawFieldValue {
             RawFieldValue::EXTENDED(value) => value.base.num_extensions() + 1
         }
     }
-}
 
-fn clone(value: &RawFieldValue) -> RawFieldValue {
-    match value {
-        RawFieldValue::BASIC(base) => RawFieldValue::BASIC(Base::clone(base)),
-        RawFieldValue::EXTENDED(values) => {
-            let clone_base: RawFieldValue = clone(&values.base);
-            let clone_extension: RawFieldValue = clone(&values.extension);
-            RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(clone_base),
-                extension: Box::new(clone_extension)
-            })
+    fn checked_add(&self, other: &Self) -> Option<Self> {
+        match self {
+            RawFieldValue::BASIC(base) => {
+                match other {
+                    RawFieldValue::BASIC(otherBase) => {
+                        let result = base.checked_add(otherBase)?;
+                        return Option::Some(RawFieldValue::BASIC(result));
+                    }
+                    RawFieldValue::EXTENDED(otherExtended) => {
+                        panic!("RawFieldValue::checked_add() extension depth mismatch: {} vs. {}",
+                            self.num_extensions(), other.num_extensions());
+                    }
+                }
+            }
+            RawFieldValue::EXTENDED(extended) => {
+                match other {
+                    RawFieldValue::BASIC(otherBase) => {
+                        panic!("RawFieldValue::checked_add() extension depth mismatch: {} vs. {}",
+                            self.num_extensions(), other.num_extensions());
+                    }
+                    RawFieldValue::EXTENDED(otherExtended) => {
+                        let resultBase: RawFieldValue = extended.base.checked_add(&otherExtended.base)?;
+                        let resultExtension: RawFieldValue = extended.extension.checked_add(&otherExtended.extension)?;
+                        return Option::Some(RawFieldValue::EXTENDED(RawExtendedValue {
+                             base: Box::new(resultBase),
+                             extension: Box::new(resultExtension)
+                        }));
+                    }
+                }
+            }
         }
     }
 }
+
+impl PartialEq for RawFieldValue {
+    fn eq(&self, other: &Self) -> bool {
+        let num_extensions_self = self.num_extensions();
+        let num_extensions_other = other.num_extensions();
+        if (num_extensions_self < num_extensions_other) {
+            return compare_raw_field_values_impl(
+                &promote_raw_field_value(self, num_extensions_other), 
+                other);
+        } else if (num_extensions_other < num_extensions_self) {
+            return compare_raw_field_values_impl(
+                &promote_raw_field_value(other, num_extensions_self),
+                self
+            );
+        } else {
+            return compare_raw_field_values_impl(self, other);
+        }
+    }
+}
+
+fn compare_raw_field_values_impl(first: &RawFieldValue, second: &RawFieldValue) -> bool {
+    match first {
+        RawFieldValue::BASIC(base) => {
+            match second {
+                RawFieldValue::BASIC(otherBase) => return base == otherBase,
+                RawFieldValue::EXTENDED(_) => {
+                    panic!("compare_raw_field_values_impl(): Cannot happen because promote_raw_field_value() was applied");
+                }
+            }
+        }
+        RawFieldValue::EXTENDED(extended) => {
+            match second {
+                RawFieldValue::BASIC(_) => {
+                    panic!("compare_raw_field_values_impl(): Cannot happen because promote_raw_field_value() was applied");
+                }
+                RawFieldValue::EXTENDED(other_extended) => {
+                    return compare_raw_field_values_impl(&extended.base, &other_extended.base) &&
+                        compare_raw_field_values_impl(&extended.extension, &other_extended.extension)
+                }
+            }
+        }
+    }
+}
+
+fn promote_raw_field_value(v: &RawFieldValue, num_required_extensions: u32) -> RawFieldValue {
+    let num_existing_extensions = v.num_extensions();
+    if num_required_extensions < num_existing_extensions {
+        panic!("promoteRawFieldValue(): Cannot promote from {} to {} extensions", num_existing_extensions, num_required_extensions);
+    } else if num_required_extensions == num_existing_extensions + 1 {
+        return RawFieldValue::EXTENDED(RawExtendedValue {
+            base: Box::new(v.clone()),
+            extension: Box::new(raw_field_value_zero(num_existing_extensions))
+        });
+    } else {
+        return promote_raw_field_value(&promote_raw_field_value(v, num_existing_extensions + 1), num_required_extensions);
+    }
+}
+
+fn raw_field_value_zero(num_extensions: u32) -> RawFieldValue {
+    if num_extensions == 0 {
+        return RawFieldValue::BASIC(Rational32::new(0, 1));
+    } else {
+        return RawFieldValue::EXTENDED(RawExtendedValue {
+            base: Box::new(raw_field_value_zero(num_extensions - 1)),
+            extension: Box::new(raw_field_value_zero(num_extensions - 1))
+        });
+    }
+}
+
+impl Eq for RawFieldValue {}
 
 impl FieldValue {
     pub fn num_extensions(&self) -> u32 {
         return self.value.num_extensions();
     }
 }
+
+impl PartialEq for FieldValue {
+    fn eq(&self, other: &Self) -> bool {
+        if self.context != other.context {
+            panic!("FieldValue::eq() not allowed on value from different FieldTower instances");
+        } else {
+            return self.value == other.value;
+        }
+    }
+}
+
+impl Eq for FieldValue {}
 
 impl ToString for FieldValue {
     fn to_string(&self) -> String {
@@ -148,10 +252,33 @@ fn is_power_of_two(n: usize) -> bool {
     }
 }
 
+impl Add for FieldValue {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        panic!("Not implemented");
+    }
+}
+
+impl CheckedAdd for FieldValue {
+    // Not defined as implementing CheckedAdd. That would require
+    // implementing trait Add which is private.
+    fn checked_add(&self, other: &Self) -> Option<Self> {
+        if self.context != other.context {
+            panic!("FieldValue::checked_add not allowed on value from different FieldTower instances")
+        }
+        return Option::Some(FieldValue {
+            context: self.context.clone(),
+            value: self.value.checked_add(&other.value)?,
+        });
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::field::{FieldTower, FieldValue, RawFieldValue};
     use num_rational::Rational32;
+    use num_traits::CheckedAdd;
 
     #[test]
     fn field_tower_only_clones_are_equal() {
@@ -180,5 +307,34 @@ mod test {
             value: raw_test_value
         };
         assert_eq!("3+5*sqrt(2)", test_value.to_string());
+    }
+
+    #[test]
+    fn values_with_simple_root_can_be_added() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+        let coefficients_1: Vec<Rational32> = vec![Rational32::new(3, 1), Rational32::new(5, 1)];
+        let raw_test_value_1 = RawFieldValue::from_coefficients(&coefficients_1[..]);
+        let test_value_1 = FieldValue {
+            context: tower.clone(),
+            value: raw_test_value_1
+        };
+        let coefficients_2: Vec<Rational32> = vec![Rational32::new(10, 1), Rational32::new(20, 1)];
+        let raw_test_value_2 = RawFieldValue::from_coefficients(&coefficients_2[..]);
+        let test_value_2 = FieldValue {
+            context: tower.clone(),
+            value: raw_test_value_2
+        };
+        let optional_result: Option<FieldValue> = test_value_1.checked_add(&test_value_2);
+        let result = optional_result.expect("Unexpected overflow");
+        let coefficients_expected: Vec<Rational32> = vec![Rational32::new(13, 1), Rational32::new(25, 1)];
+        let raw_expected_value = RawFieldValue::from_coefficients(&coefficients_expected[..]);
+        let expected_value = FieldValue {
+            context: tower,
+            value: raw_expected_value
+        };
+
+        assert_eq!(result.to_string(), expected_value.to_string());
+        assert_eq!(result == expected_value, true);
     }
 }
