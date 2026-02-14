@@ -333,8 +333,29 @@ mod test {
             context: tower,
             value: raw_expected_value
         };
-
         assert_eq!(result.to_string(), expected_value.to_string());
         assert_eq!(result == expected_value, true);
+    }
+
+    #[test]
+    fn when_adding_produces_overflow_than_none_returned() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+        let big_base = FieldValue {
+            context: tower.clone(),
+            value: RawFieldValue::from_coefficients(&vec![Rational32::new(i32::MAX, 1), Rational32::new(1, 1)])
+        };
+        let big_extended = FieldValue {
+            context: tower.clone(),
+            value: RawFieldValue::from_coefficients(&vec![Rational32::new(1, 1), Rational32::new(i32::MAX, 1)])
+        };
+        let with_coefficients_one = FieldValue {
+            context: tower.clone(),
+            value: RawFieldValue::from_coefficients(&vec![Rational32::new(1, 1), Rational32::new(1, 1)])
+        };
+        assert_eq!(big_base.checked_add(&with_coefficients_one).is_none(), true);
+        assert_eq!(with_coefficients_one.checked_add(&big_base).is_none(), true);
+        assert_eq!(big_extended.checked_add(&with_coefficients_one).is_none(), true);
+        assert_eq!(with_coefficients_one.checked_add(&big_extended).is_none(), true);
     }
 }
