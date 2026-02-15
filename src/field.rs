@@ -1,9 +1,9 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt::Debug;
-use std::ops::{Add, Sub, Mul};
+use std::ops::{Add, Sub, Mul, Div};
 use num_rational::Rational32;
-use num_traits::{CheckedAdd, CheckedSub, CheckedMul};
+use num_traits::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv};
 pub type Base = Rational32;
 
 #[derive(Clone)]
@@ -113,6 +113,20 @@ impl Mul for FieldValue {
 impl CheckedMul for FieldValue {
     fn checked_mul(&self, other: &Self) -> Option<Self> {
         return bin_op(self, other, RawFieldValue::checked_mul);
+    }
+}
+
+impl Div for FieldValue {
+    type Output = Self;
+
+    fn div(self, _: Self) -> Self {
+        panic!("Not implemented");
+    }
+}
+
+impl CheckedDiv for FieldValue {
+    fn checked_div(&self, other: &Self) -> Option<Self> {
+        return bin_op(self, other, RawFieldValue::checked_div);
     }
 }
 
@@ -267,6 +281,60 @@ impl RawFieldValue {
             base: Box::new(result_base),
             extension: Box::new(result_extension)
         });
+    }
+
+    fn checked_div(&self, other: &Self, context: &FieldTower) -> Option<Self> {
+        return RawFieldValue::bin_op(
+            self,
+            other,
+            context,
+            RawFieldValue::checked_div_base,
+            RawFieldValue::checked_div_extended);
+    }
+
+    fn checked_div_base(first: &Base, second: &Base, _: &FieldTower) -> Option<Base> {
+        return first.checked_div(second);
+    }
+
+    fn checked_div_extended(num: &RawExtendedValue, den: &RawExtendedValue, context: &FieldTower) -> Option<RawExtendedValue> {
+        let root_index: usize = num.base.num_extensions() as usize;
+        let root: &RawFieldValue = &context.data.borrow().roots[root_index];
+        // Multiply num and den with den.base - den.extended * sqrt(...).
+        let multiplier: RawFieldValue = RawFieldValue::EXTENDED(RawExtendedValue {
+            base: den.base.clone(),
+            extension: Box::new(den.extension.checked_neg()?)
+        });
+        let result_num: RawFieldValue = RawFieldValue::EXTENDED(num.clone()).checked_mul(&multiplier, context)?;
+        let lower_level_den: RawFieldValue = RawFieldValue::pseudo_norm(&den, &root, context)?;
+        let result: RawExtendedValue = match result_num {
+            RawFieldValue::BASIC(_) => panic!("Expected EXTENDED because was constructed that way"),
+            RawFieldValue::EXTENDED(num) => RawExtendedValue {
+                base: Box::new(num.base.checked_div(&lower_level_den, context)?),
+                extension: Box::new(num.extension.checked_div(&lower_level_den, context)?)
+            }
+        };
+        return Option::Some(result);
+    }
+
+    fn checked_neg(&self) -> Option<RawFieldValue> {
+        let result: RawFieldValue = match self {
+            RawFieldValue::BASIC(base) =>
+                RawFieldValue::BASIC(Base::new(0, 1).checked_sub(&base)?),
+            RawFieldValue::EXTENDED(extended) =>
+                RawFieldValue::EXTENDED(RawExtendedValue {
+                    base: Box::new(extended.base.checked_neg()?),
+                    extension: Box::new(extended.extension.checked_neg()?)
+                })
+        };
+        return Option::Some(result);
+    }
+
+    fn pseudo_norm(v: &RawExtendedValue, root: &RawFieldValue, context: &FieldTower) -> Option<RawFieldValue> {
+        let term1 = v.base.checked_mul(&v.base, context)?;
+        let term2 = v.extension.checked_mul(&
+            v.extension.checked_mul(root, context)?, context)?;
+        let result: RawFieldValue = term1.checked_sub(&term2, context)?;
+        return Option::Some(result);
     }
 
     fn bin_op(
@@ -434,7 +502,7 @@ fn is_power_of_two(n: usize) -> bool {
 mod test {
     use crate::field::{FieldTower, FieldValue, RawFieldValue};
     use num_rational::Rational32;
-    use num_traits::{CheckedAdd, CheckedSub, CheckedMul};
+    use num_traits::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv};
 
     #[test]
     fn field_tower_only_clones_are_equal() {
@@ -623,5 +691,37 @@ mod test {
         let expected_str = "18+30*sqrt(2)";
         assert_eq!(result_1.to_string(), expected_str);
         assert_eq!(result_2.to_string(), expected_str);
+    }
+
+    // Test was created based on multiplication test. Expected value of multiplication
+    // is divided by one of the arguments and the other multiplication factor is
+    // expected here as result.
+    #[test]
+    fn values_with_simple_root_can_be_divided() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+
+        let coefficients_num: Vec<Rational32> = vec![Rational32::new(230, 1), Rational32::new(110, 1)];
+        let raw_num = RawFieldValue::from_coefficients(&coefficients_num[..]);
+        let num = FieldValue {
+            context: tower.clone(),
+            value: raw_num
+        };
+        let coefficients_den: Vec<Rational32> = vec![Rational32::new(3, 1), Rational32::new(5, 1)];
+        let raw_den = RawFieldValue::from_coefficients(&coefficients_den[..]);
+        let den = FieldValue {
+            context: tower.clone(),
+            value: raw_den
+        };
+        let coefficients_expected: Vec<Rational32> = vec![Rational32::new(10, 1), Rational32::new(20, 1)];
+        let raw_expected = RawFieldValue::from_coefficients(&coefficients_expected[..]);
+        let expected = FieldValue {
+            context: tower.clone(),
+            value: raw_expected
+        };
+        let optional_result: Option<FieldValue> = num.checked_div(&den);
+        let result = optional_result.expect("Unexpected overflow");
+        assert_eq!(result.to_string(), expected.to_string());
+        assert_eq!(result == expected, true);
     }
 }
