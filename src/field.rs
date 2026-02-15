@@ -59,6 +59,22 @@ impl FieldTower {
     }
 }
 
+impl PartialEq for FieldTower {
+    fn eq(&self, other: &Self) -> bool {
+        let my_data: &Rc<RefCell<FieldTowerData>> = &self.data;
+        let other_data: &Rc<RefCell<FieldTowerData>> = &other.data;
+        return Rc::<RefCell<FieldTowerData>>::ptr_eq(my_data, other_data);
+    }
+}
+
+impl Eq for FieldTower {}
+
+impl FieldValue {
+    pub fn num_extensions(&self) -> u32 {
+        return self.value.num_extensions();
+    }
+}
+
 impl Add for FieldValue {
     type Output = Self;
 
@@ -87,15 +103,25 @@ impl CheckedMul for FieldValue {
     }
 }
 
-impl PartialEq for FieldTower {
+impl PartialEq for FieldValue {
     fn eq(&self, other: &Self) -> bool {
-        let my_data: &Rc<RefCell<FieldTowerData>> = &self.data;
-        let other_data: &Rc<RefCell<FieldTowerData>> = &other.data;
-        return Rc::<RefCell<FieldTowerData>>::ptr_eq(my_data, other_data);
+        if self.context != other.context {
+            panic!("FieldValue::eq() not allowed on value from different FieldTower instances");
+        } else {
+            return self.value == other.value;
+        }
     }
 }
 
-impl Eq for FieldTower {}
+impl Eq for FieldValue {}
+
+impl ToString for FieldValue {
+    fn to_string(&self) -> String {
+        let value = &self.value;
+        let context = &self.context;
+        return RawFieldValue::to_string(&value, &context);
+    }
+}
 
 impl RawFieldValue {
     fn from_coefficients(coeffs: &[Base]) -> RawFieldValue {
@@ -306,6 +332,20 @@ impl RawFieldValue {
             });
         }
     }
+
+    fn to_string(value: &RawFieldValue, context: &FieldTower) -> String {
+        match value {
+            RawFieldValue::BASIC(base) => base.to_string(),
+            RawFieldValue::EXTENDED(extended) => {
+                let base_str = RawFieldValue::to_string(&extended.base, &context);
+                let extended_coeff_str = RawFieldValue::to_string(&extended.extension, &context);
+                let root_index = value.num_extensions() as usize - 1;
+                let root_of: &RawFieldValue = &context.data.borrow().roots[root_index];
+                let root_of_str = RawFieldValue::to_string(&root_of, &context);
+                return format!("{}+{}*sqrt({})", base_str, extended_coeff_str, root_of_str);
+            }
+        }
+    }
 }
 
 impl PartialEq for RawFieldValue {
@@ -318,60 +358,7 @@ impl PartialEq for RawFieldValue {
 
 impl Eq for RawFieldValue {}
 
-impl FieldValue {
-    pub fn num_extensions(&self) -> u32 {
-        return self.value.num_extensions();
-    }
-}
-
-impl PartialEq for FieldValue {
-    fn eq(&self, other: &Self) -> bool {
-        if self.context != other.context {
-            panic!("FieldValue::eq() not allowed on value from different FieldTower instances");
-        } else {
-            return self.value == other.value;
-        }
-    }
-}
-
-impl Eq for FieldValue {}
-
-impl ToString for FieldValue {
-    fn to_string(&self) -> String {
-        let value = &self.value;
-        let context = &self.context;
-        return to_string(&value, &context);
-    }
-}
-
-fn to_string(value: &RawFieldValue, context: &FieldTower) -> String {
-    match value {
-        RawFieldValue::BASIC(base) => base.to_string(),
-        RawFieldValue::EXTENDED(extended) => {
-            let base_str = to_string(&extended.base, &context);
-            let extended_coeff_str = to_string(&extended.extension, &context);
-            let root_index = value.num_extensions() as usize - 1;
-            let root_of: &RawFieldValue = &context.data.borrow().roots[root_index];
-            let root_of_str = to_string(&root_of, &context);
-            return format!("{}+{}*sqrt({})", base_str, extended_coeff_str, root_of_str);
-        }
-    }
-}
-
 const NUM_BITS: u32 = (usize::MAX).count_ones();
-
-fn is_power_of_two(n: usize) -> bool {
-    if n == 0 {
-        return true;
-    } else {
-        for p in 0..NUM_BITS {
-            if n == 1 << p {
-                return true;
-            }
-        }
-        return false;
-    }
-}
 
 fn bin_op(
     first: &FieldValue,
@@ -387,6 +374,19 @@ fn bin_op(
         context: first.context.clone(),
         value: result
     });
+}
+
+fn is_power_of_two(n: usize) -> bool {
+    if n == 0 {
+        return true;
+    } else {
+        for p in 0..NUM_BITS {
+            if n == 1 << p {
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 #[cfg(test)]
