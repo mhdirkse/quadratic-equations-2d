@@ -95,122 +95,122 @@ impl RawFieldValue {
     }
 
     fn checked_add(&self, other: &Self, context: &FieldTower) -> Option<Self> {
-        return bin_op(self, other, context, checked_add_base, checked_add_extended);
+        return RawFieldValue::bin_op(self, other, context, RawFieldValue::checked_add_base, RawFieldValue::checked_add_extended);
+    }
+
+    fn checked_add_base(first: &Base, second: &Base, _: &FieldTower) -> Option<Base> {
+        return first.checked_add(second);
+    }
+
+    fn checked_add_extended(first: &RawExtendedValue, second: &RawExtendedValue, context: &FieldTower) -> Option<RawExtendedValue> {
+        let base: RawFieldValue = RawFieldValue::bin_op(
+            &first.base,
+            &second.base,
+            context,
+            RawFieldValue::checked_add_base,
+            RawFieldValue::checked_add_extended)?;
+        let extension: RawFieldValue = RawFieldValue::bin_op(
+            &first.extension,
+            &second.extension,
+            context,
+            RawFieldValue::checked_add_base,
+            RawFieldValue::checked_add_extended
+        )?;
+        return Option::Some(RawExtendedValue {
+            base: Box::new(base),
+            extension: Box::new(extension)
+        });
     }
 
     fn checked_mul(&self, other: &Self, context: &FieldTower) -> Option<Self> {
-        return bin_op(
+        return RawFieldValue::bin_op(
             self,
             other,
             context,
-            checked_mul_base,
-            checked_mul_extended);
+            RawFieldValue::checked_mul_base,
+            RawFieldValue::checked_mul_extended);
     }
-}
 
-fn bin_op(
-    raw_first: &RawFieldValue,
-    raw_second: &RawFieldValue,
-    context: &FieldTower,
-    base_op: fn(&Base, &Base, &FieldTower) -> Option<Base>,
-    extended_op: fn(&RawExtendedValue, &RawExtendedValue, &FieldTower) -> Option<RawExtendedValue>)
-    -> Option<RawFieldValue>
-{
-    let (first, second): (RawFieldValue, RawFieldValue) =
-        equalize_num_extensions(raw_first, raw_second);
-    match first {
-        RawFieldValue::BASIC(base) => {
-            match second {
-                RawFieldValue::BASIC(other_base) => {
-                    let result: Base = base_op(&base, &other_base, context)?;
-                    return Option::Some(RawFieldValue::BASIC(result));
+    fn checked_mul_base(first: &Base, second: &Base, _: &FieldTower) -> Option<Base> {
+        return first.checked_mul(second);
+    }
+
+    fn checked_mul_extended(first: &RawExtendedValue, second: &RawExtendedValue, context: &FieldTower) -> Option<RawExtendedValue> {
+        let root_index: u32 = first.base.num_extensions();
+        let root: &RawFieldValue = &context.data.borrow().roots[root_index as usize];
+        let term1: RawFieldValue = RawFieldValue::bin_op(
+            &first.base,
+            &second.base,
+            context,
+            RawFieldValue::checked_mul_base,
+            RawFieldValue::checked_mul_extended
+        )?;
+        let term2: RawFieldValue = RawFieldValue::bin_op(
+            &first.base,
+            &second.extension,
+            context,
+            RawFieldValue::checked_mul_base,
+            RawFieldValue::checked_mul_extended
+        )?;
+        let term3: RawFieldValue = RawFieldValue::bin_op(
+            &first.extension,
+            &second.base,
+            context,
+            RawFieldValue::checked_mul_base,
+            RawFieldValue::checked_mul_extended
+        )?;
+        let term4: RawFieldValue = RawFieldValue::bin_op(
+            &first.extension,
+            &second.extension,
+            context,
+            RawFieldValue::checked_mul_base,
+            RawFieldValue::checked_mul_extended
+        )?;
+        let result_base: RawFieldValue = term1.checked_add(&term4.checked_mul(root, context)?, context)?;
+        let result_extension: RawFieldValue = term2.checked_add(&term3, context)?;
+        return Option::Some(RawExtendedValue {
+            base: Box::new(result_base),
+            extension: Box::new(result_extension)
+        });
+    }
+
+    fn bin_op(
+        raw_first: &RawFieldValue,
+        raw_second: &RawFieldValue,
+        context: &FieldTower,
+        base_op: fn(&Base, &Base, &FieldTower) -> Option<Base>,
+        extended_op: fn(&RawExtendedValue, &RawExtendedValue, &FieldTower) -> Option<RawExtendedValue>)
+        -> Option<RawFieldValue>
+    {
+        let (first, second): (RawFieldValue, RawFieldValue) =
+            equalize_num_extensions(raw_first, raw_second);
+        match first {
+            RawFieldValue::BASIC(base) => {
+                match second {
+                    RawFieldValue::BASIC(other_base) => {
+                        let result: Base = base_op(&base, &other_base, context)?;
+                        return Option::Some(RawFieldValue::BASIC(result));
+                    }
+                    RawFieldValue::EXTENDED(_) => {
+                        panic!("RawFieldValue::bin_op() extension depth mismatch: {} vs. {}",
+                            first.num_extensions(), second.num_extensions());
+                    }
                 }
-                RawFieldValue::EXTENDED(_) => {
-                    panic!("RawFieldValue::bin_op() extension depth mismatch: {} vs. {}",
-                        first.num_extensions(), second.num_extensions());
+            }
+            RawFieldValue::EXTENDED(ref extended) => {
+                match second {
+                    RawFieldValue::BASIC(_) => {
+                        panic!("RawFieldValue::bin_op() extension depth mismatch: {} vs. {}",
+                            first.num_extensions(), second.num_extensions());
+                    }
+                    RawFieldValue::EXTENDED(ref other_extended) => {
+                        let result: RawExtendedValue = extended_op(extended, other_extended, context)?;
+                        return Option::Some(RawFieldValue::EXTENDED(result));
+                    }
                 }
             }
         }
-        RawFieldValue::EXTENDED(ref extended) => {
-            match second {
-                RawFieldValue::BASIC(_) => {
-                    panic!("RawFieldValue::bin_op() extension depth mismatch: {} vs. {}",
-                        first.num_extensions(), second.num_extensions());
-                }
-                RawFieldValue::EXTENDED(ref other_extended) => {
-                    let result: RawExtendedValue = extended_op(extended, other_extended, context)?;
-                    return Option::Some(RawFieldValue::EXTENDED(result));
-                }
-            }
-        }
     }
-}
-
-fn checked_add_base(first: &Base, second: &Base, _: &FieldTower) -> Option<Base> {
-    return first.checked_add(second);
-}
-
-fn checked_add_extended(first: &RawExtendedValue, second: &RawExtendedValue, context: &FieldTower) -> Option<RawExtendedValue> {
-    let base: RawFieldValue = bin_op(
-        &first.base,
-        &second.base,
-        context,
-        checked_add_base,
-        checked_add_extended)?;
-    let extension: RawFieldValue = bin_op(
-        &first.extension,
-        &second.extension,
-        context,
-        checked_add_base,
-        checked_add_extended
-    )?;
-    return Option::Some(RawExtendedValue {
-        base: Box::new(base),
-        extension: Box::new(extension)
-    });
-}
-
-fn checked_mul_base(first: &Base, second: &Base, _: &FieldTower) -> Option<Base> {
-    return first.checked_mul(second);
-}
-
-fn checked_mul_extended(first: &RawExtendedValue, second: &RawExtendedValue, context: &FieldTower) -> Option<RawExtendedValue> {
-    let root_index: u32 = first.base.num_extensions();
-    let root: &RawFieldValue = &context.data.borrow().roots[root_index as usize];
-    let term1: RawFieldValue = bin_op(
-        &first.base,
-        &second.base,
-        context,
-        checked_mul_base,
-        checked_mul_extended
-    )?;
-    let term2: RawFieldValue = bin_op(
-        &first.base,
-        &second.extension,
-        context,
-        checked_mul_base,
-        checked_mul_extended
-    )?;
-    let term3: RawFieldValue = bin_op(
-        &first.extension,
-        &second.base,
-        context,
-        checked_mul_base,
-        checked_mul_extended
-    )?;
-    let term4: RawFieldValue = bin_op(
-        &first.extension,
-        &second.extension,
-        context,
-        checked_mul_base,
-        checked_mul_extended
-    )?;
-    let result_base: RawFieldValue = term1.checked_add(&term4.checked_mul(root, context)?, context)?;
-    let result_extension: RawFieldValue = term2.checked_add(&term3, context)?;
-    return Option::Some(RawExtendedValue {
-        base: Box::new(result_base),
-        extension: Box::new(result_extension)
-    });
 }
 
 impl PartialEq for RawFieldValue {
