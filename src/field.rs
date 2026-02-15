@@ -465,6 +465,22 @@ mod test {
     }
 
     #[test]
+    fn when_values_have_unequal_number_of_extensions_then_can_be_added() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+        let extended: FieldValue = FieldValue {
+            context: tower.clone(),
+            value: RawFieldValue::from_coefficients(&vec![Rational32::new(3, 1), Rational32::new(5, 1)])
+        };
+        let simple: FieldValue = tower.value(Rational32::new(6, 1));
+        let result_1: FieldValue = extended.checked_add(&simple).expect("No overflow expected");
+        let result_2: FieldValue = simple.checked_add(&extended).expect("No overflow expected");
+        let expected_str = "9+5*sqrt(2)";
+        assert_eq!(result_1.to_string(), expected_str);
+        assert_eq!(result_2.to_string(), expected_str);
+    }
+
+    #[test]
     fn values_with_simple_root_can_be_multiplied() {
         let mut tower: FieldTower = FieldTower::new();
         tower.add_root(tower.value(Rational32::new(2, 1)));
@@ -512,5 +528,21 @@ mod test {
         assert_eq!(multiplier.checked_add(&big_base).is_none(), true);
         assert_eq!(big_extended.checked_add(&multiplier).is_none(), true);
         assert_eq!(multiplier.checked_add(&big_extended).is_none(), true);
+    }
+
+    #[test]
+    fn when_values_have_unequal_number_of_extensions_then_can_be_multiplied() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+        let extended: FieldValue = FieldValue {
+            context: tower.clone(),
+            value: RawFieldValue::from_coefficients(&vec![Rational32::new(3, 1), Rational32::new(5, 1)])
+        };
+        let simple: FieldValue = tower.value(Rational32::new(6, 1));
+        let result_1: FieldValue = extended.checked_mul(&simple).expect("No overflow expected");
+        let result_2: FieldValue = simple.checked_mul(&extended).expect("No overflow expected");
+        let expected_str = "18+30*sqrt(2)";
+        assert_eq!(result_1.to_string(), expected_str);
+        assert_eq!(result_2.to_string(), expected_str);
     }
 }
