@@ -349,13 +349,7 @@ impl Add for FieldValue {
 
 impl CheckedAdd for FieldValue {
     fn checked_add(&self, other: &Self) -> Option<Self> {
-        if self.context != other.context {
-            panic!("FieldValue::checked_add not allowed on value from different FieldTower instances")
-        }
-        return Option::Some(FieldValue {
-            context: self.context.clone(),
-            value: self.value.checked_add(&other.value, &self.context)?,
-        });
+        return bin_op(self, other, RawFieldValue::checked_add);
     }
 }
 
@@ -369,14 +363,24 @@ impl Mul for FieldValue {
 
 impl CheckedMul for FieldValue {
     fn checked_mul(&self, other: &Self) -> Option<Self> {
-        if self.context != other.context {
-            panic!("FieldValue::checked_mul() not allowed on value from different FieldTower instances")
-        }
-        return Option::Some(FieldValue {
-            context: self.context.clone(),
-            value: self.value.checked_mul(&other.value, &self.context)?,
-        });
+        return bin_op(self, other, RawFieldValue::checked_mul);
     }
+}
+
+fn bin_op(
+    first: &FieldValue,
+    second: &FieldValue,
+    handler: fn(&RawFieldValue, &RawFieldValue, &FieldTower) -> Option<RawFieldValue>)
+    -> Option<FieldValue>
+{
+    if first.context != second.context {
+        panic!("Binary operation not allowed on values from different FieldTower instances");
+    }
+    let result: RawFieldValue = handler(&first.value, &second.value, &first.context)?;
+    return Option::Some(FieldValue {
+        context: first.context.clone(),
+        value: result
+    });
 }
 
 #[cfg(test)]
