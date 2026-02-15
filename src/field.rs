@@ -59,6 +59,34 @@ impl FieldTower {
     }
 }
 
+impl Add for FieldValue {
+    type Output = Self;
+
+    fn add(self, _: Self) -> Self {
+        panic!("Not implemented");
+    }
+}
+
+impl CheckedAdd for FieldValue {
+    fn checked_add(&self, other: &Self) -> Option<Self> {
+        return bin_op(self, other, RawFieldValue::checked_add);
+    }
+}
+
+impl Mul for FieldValue {
+    type Output = Self;
+
+    fn mul(self, _: Self) -> Self {
+        panic!("Not implemented");
+    }
+}
+
+impl CheckedMul for FieldValue {
+    fn checked_mul(&self, other: &Self) -> Option<Self> {
+        return bin_op(self, other, RawFieldValue::checked_mul);
+    }
+}
+
 impl PartialEq for FieldTower {
     fn eq(&self, other: &Self) -> bool {
         let my_data: &Rc<RefCell<FieldTowerData>> = &self.data;
@@ -183,7 +211,7 @@ impl RawFieldValue {
         -> Option<RawFieldValue>
     {
         let (first, second): (RawFieldValue, RawFieldValue) =
-            equalize_num_extensions(raw_first, raw_second);
+            RawFieldValue::equalize_num_extensions(raw_first, raw_second);
         match first {
             RawFieldValue::BASIC(base) => {
                 match second {
@@ -211,74 +239,80 @@ impl RawFieldValue {
             }
         }
     }
+
+    fn equalize_num_extensions(first: &RawFieldValue, second: &RawFieldValue) -> (RawFieldValue, RawFieldValue) {
+        let num_extensions_first = first.num_extensions();
+        let num_extensions_second = second.num_extensions();
+        if num_extensions_first < num_extensions_second {
+            return (RawFieldValue::promote(&first, num_extensions_second), second.clone());
+        } else if num_extensions_second < num_extensions_first {
+            return (first.clone(), RawFieldValue::promote(&second, num_extensions_first));
+        } else {
+            return (first.clone(), second.clone());
+        }
+    }
+
+    fn compare_impl(first: &RawFieldValue, second: &RawFieldValue) -> bool {
+        match first {
+            RawFieldValue::BASIC(base) => {
+                match second {
+                    RawFieldValue::BASIC(otherBase) => return base == otherBase,
+                    RawFieldValue::EXTENDED(_) => {
+                        panic!("RawFieldValue::compare_impl(): Cannot happen because RawFieldValue::promote() was applied");
+                    }
+                }
+            }
+            RawFieldValue::EXTENDED(extended) => {
+                match second {
+                    RawFieldValue::BASIC(_) => {
+                        panic!("RawFieldValue::compare_impl(): Cannot happen because RawFieldValue::promote() was applied");
+                    }
+                    RawFieldValue::EXTENDED(other_extended) => {
+                        return RawFieldValue::compare_impl(&extended.base, &other_extended.base) &&
+                            RawFieldValue::compare_impl(&extended.extension, &other_extended.extension)
+                    }
+                }
+            }
+        }
+    }
+
+    fn promote(v: &RawFieldValue, num_required_extensions: u32) -> RawFieldValue {
+        let num_existing_extensions = v.num_extensions();
+        if num_required_extensions < num_existing_extensions {
+            panic!("promote(): Cannot promote from {} to {} extensions", num_existing_extensions, num_required_extensions);
+        } else if num_required_extensions == num_existing_extensions + 1 {
+            return RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(v.clone()),
+                extension: Box::new(RawFieldValue::zero(num_existing_extensions))
+            });
+        } else {
+            return RawFieldValue::promote(
+                &RawFieldValue::promote(
+                    v,
+                    num_existing_extensions + 1
+                ),
+                num_required_extensions
+            );
+        }
+    }
+
+    fn zero(num_extensions: u32) -> RawFieldValue {
+        if num_extensions == 0 {
+            return RawFieldValue::BASIC(Rational32::new(0, 1));
+        } else {
+            return RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::zero(num_extensions - 1)),
+                extension: Box::new(RawFieldValue::zero(num_extensions - 1))
+            });
+        }
+    }
 }
 
 impl PartialEq for RawFieldValue {
     fn eq(&self, other: &Self) -> bool {
         let (first, second): (RawFieldValue, RawFieldValue) =
-            equalize_num_extensions(&self, other);
-        return compare_raw_field_values_impl(&first, &second);
-    }
-}
-
-fn equalize_num_extensions(first: &RawFieldValue, second: &RawFieldValue) -> (RawFieldValue, RawFieldValue) {
-    let num_extensions_first = first.num_extensions();
-    let num_extensions_second = second.num_extensions();
-    if num_extensions_first < num_extensions_second {
-        return (promote_raw_field_value(&first, num_extensions_second), second.clone());
-    } else if num_extensions_second < num_extensions_first {
-        return (first.clone(), promote_raw_field_value(&second, num_extensions_first));
-    } else {
-        return (first.clone(), second.clone());
-    }
-}
-
-fn compare_raw_field_values_impl(first: &RawFieldValue, second: &RawFieldValue) -> bool {
-    match first {
-        RawFieldValue::BASIC(base) => {
-            match second {
-                RawFieldValue::BASIC(otherBase) => return base == otherBase,
-                RawFieldValue::EXTENDED(_) => {
-                    panic!("compare_raw_field_values_impl(): Cannot happen because promote_raw_field_value() was applied");
-                }
-            }
-        }
-        RawFieldValue::EXTENDED(extended) => {
-            match second {
-                RawFieldValue::BASIC(_) => {
-                    panic!("compare_raw_field_values_impl(): Cannot happen because promote_raw_field_value() was applied");
-                }
-                RawFieldValue::EXTENDED(other_extended) => {
-                    return compare_raw_field_values_impl(&extended.base, &other_extended.base) &&
-                        compare_raw_field_values_impl(&extended.extension, &other_extended.extension)
-                }
-            }
-        }
-    }
-}
-
-fn promote_raw_field_value(v: &RawFieldValue, num_required_extensions: u32) -> RawFieldValue {
-    let num_existing_extensions = v.num_extensions();
-    if num_required_extensions < num_existing_extensions {
-        panic!("promoteRawFieldValue(): Cannot promote from {} to {} extensions", num_existing_extensions, num_required_extensions);
-    } else if num_required_extensions == num_existing_extensions + 1 {
-        return RawFieldValue::EXTENDED(RawExtendedValue {
-            base: Box::new(v.clone()),
-            extension: Box::new(raw_field_value_zero(num_existing_extensions))
-        });
-    } else {
-        return promote_raw_field_value(&promote_raw_field_value(v, num_existing_extensions + 1), num_required_extensions);
-    }
-}
-
-fn raw_field_value_zero(num_extensions: u32) -> RawFieldValue {
-    if num_extensions == 0 {
-        return RawFieldValue::BASIC(Rational32::new(0, 1));
-    } else {
-        return RawFieldValue::EXTENDED(RawExtendedValue {
-            base: Box::new(raw_field_value_zero(num_extensions - 1)),
-            extension: Box::new(raw_field_value_zero(num_extensions - 1))
-        });
+            RawFieldValue::equalize_num_extensions(&self, other);
+        return RawFieldValue::compare_impl(&first, &second);
     }
 }
 
@@ -336,34 +370,6 @@ fn is_power_of_two(n: usize) -> bool {
             }
         }
         return false;
-    }
-}
-
-impl Add for FieldValue {
-    type Output = Self;
-
-    fn add(self, _: Self) -> Self {
-        panic!("Not implemented");
-    }
-}
-
-impl CheckedAdd for FieldValue {
-    fn checked_add(&self, other: &Self) -> Option<Self> {
-        return bin_op(self, other, RawFieldValue::checked_add);
-    }
-}
-
-impl Mul for FieldValue {
-    type Output = Self;
-
-    fn mul(self, _: Self) -> Self {
-        panic!("Not implemented");
-    }
-}
-
-impl CheckedMul for FieldValue {
-    fn checked_mul(&self, other: &Self) -> Option<Self> {
-        return bin_op(self, other, RawFieldValue::checked_mul);
     }
 }
 
