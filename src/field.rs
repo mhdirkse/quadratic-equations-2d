@@ -1,10 +1,9 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt::Debug;
-use std::ops::Add;
-use std::ops::Mul;
+use std::ops::{Add, Sub, Mul};
 use num_rational::Rational32;
-use num_traits::{CheckedAdd, CheckedMul};
+use num_traits::{CheckedAdd, CheckedSub, CheckedMul};
 pub type Base = Rational32;
 
 #[derive(Clone)]
@@ -89,6 +88,20 @@ impl CheckedAdd for FieldValue {
     }
 }
 
+impl Sub for FieldValue {
+    type Output = Self;
+
+    fn sub(self, _: Self) -> Self {
+        panic!("Not implemented");
+    }
+}
+
+impl CheckedSub for FieldValue {
+    fn checked_sub(&self, other: &Self) -> Option<Self> {
+        return bin_op(self, other, RawFieldValue::checked_sub);
+    }
+}
+
 impl Mul for FieldValue {
     type Output = Self;
 
@@ -169,6 +182,34 @@ impl RawFieldValue {
             context,
             RawFieldValue::checked_add_base,
             RawFieldValue::checked_add_extended
+        )?;
+        return Option::Some(RawExtendedValue {
+            base: Box::new(base),
+            extension: Box::new(extension)
+        });
+    }
+
+    fn checked_sub(&self, other: &Self, context: &FieldTower) -> Option<Self> {
+        return RawFieldValue::bin_op(self, other, context, RawFieldValue::checked_sub_base, RawFieldValue::checked_sub_extended);
+    }
+
+    fn checked_sub_base(first: &Base, second: &Base, _: &FieldTower) -> Option<Base> {
+        return first.checked_sub(second);
+    }
+
+    fn checked_sub_extended(first: &RawExtendedValue, second: &RawExtendedValue, context: &FieldTower) -> Option<RawExtendedValue> {
+        let base: RawFieldValue = RawFieldValue::bin_op(
+            &first.base,
+            &second.base,
+            context,
+            RawFieldValue::checked_sub_base,
+            RawFieldValue::checked_sub_extended)?;
+        let extension: RawFieldValue = RawFieldValue::bin_op(
+            &first.extension,
+            &second.extension,
+            context,
+            RawFieldValue::checked_sub_base,
+            RawFieldValue::checked_sub_extended
         )?;
         return Option::Some(RawExtendedValue {
             base: Box::new(base),
@@ -393,7 +434,7 @@ fn is_power_of_two(n: usize) -> bool {
 mod test {
     use crate::field::{FieldTower, FieldValue, RawFieldValue};
     use num_rational::Rational32;
-    use num_traits::{CheckedAdd, CheckedMul};
+    use num_traits::{CheckedAdd, CheckedSub, CheckedMul};
 
     #[test]
     fn field_tower_only_clones_are_equal() {
@@ -443,6 +484,34 @@ mod test {
         let optional_result: Option<FieldValue> = test_value_1.checked_add(&test_value_2);
         let result = optional_result.expect("Unexpected overflow");
         let coefficients_expected: Vec<Rational32> = vec![Rational32::new(13, 1), Rational32::new(25, 1)];
+        let raw_expected_value = RawFieldValue::from_coefficients(&coefficients_expected[..]);
+        let expected_value = FieldValue {
+            context: tower,
+            value: raw_expected_value
+        };
+        assert_eq!(result.to_string(), expected_value.to_string());
+        assert_eq!(result == expected_value, true);
+    }
+
+    #[test]
+    fn values_with_simple_root_can_be_subtracted() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+        let coefficients_1: Vec<Rational32> = vec![Rational32::new(3, 1), Rational32::new(5, 1)];
+        let raw_test_value_1 = RawFieldValue::from_coefficients(&coefficients_1[..]);
+        let test_value_1 = FieldValue {
+            context: tower.clone(),
+            value: raw_test_value_1
+        };
+        let coefficients_2: Vec<Rational32> = vec![Rational32::new(10, 1), Rational32::new(20, 1)];
+        let raw_test_value_2 = RawFieldValue::from_coefficients(&coefficients_2[..]);
+        let test_value_2 = FieldValue {
+            context: tower.clone(),
+            value: raw_test_value_2
+        };
+        let optional_result: Option<FieldValue> = test_value_1.checked_sub(&test_value_2);
+        let result = optional_result.expect("Unexpected overflow");
+        let coefficients_expected: Vec<Rational32> = vec![Rational32::new(-7, 1), Rational32::new(-15, 1)];
         let raw_expected_value = RawFieldValue::from_coefficients(&coefficients_expected[..]);
         let expected_value = FieldValue {
             context: tower,
