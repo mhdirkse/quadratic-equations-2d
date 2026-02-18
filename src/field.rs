@@ -848,4 +848,76 @@ mod test {
         assert_eq!(positive.compare_to_zero().expect("Expected Some"), Ordering::Greater);
         assert_eq!(negative.compare_to_zero().expect("Expected Some"), Ordering::Less);
     }
+
+    #[test]
+    fn when_coefficients_have_same_sign_then_that_sign_returned() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+        let positive = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(1, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(1,1))),
+            }),
+            context: tower.clone(),
+        };
+        let negative = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(-1, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(-1, 1))),
+            }),
+            context: tower.clone(),
+        };
+        assert_eq!(positive.num_extensions(), 1);
+        assert_eq!(negative.num_extensions(), 1);
+        assert_eq!(positive.compare_to_zero().expect("Expected Some"), Ordering::Greater);
+        assert_eq!(negative.compare_to_zero().expect("Expected Some"), Ordering::Less);
+    }
+
+    #[test]
+    fn when_nonroot_coeff_positive_then_squares_compared() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+        let positive = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(2, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(-1,1))),
+            }),
+            context: tower.clone(),
+        };
+        let negative = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(2, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(-2, 1))),
+            }),
+            context: tower.clone(),
+        };
+        assert_eq!(positive.num_extensions(), 1);
+        assert_eq!(negative.num_extensions(), 1);
+        assert_eq!(positive.compare_to_zero().expect("Expected Some"), Ordering::Greater);
+        assert_eq!(negative.compare_to_zero().expect("Expected Some"), Ordering::Less);
+    }
+
+    #[test]
+    fn when_nonroot_coeff_negative_then_squares_compared() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+        let positive = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(-2, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(2,1))),
+            }),
+            context: tower.clone(),
+        };
+        let negative = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(-2, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(1, 1))),
+            }),
+            context: tower.clone(),
+        };
+        assert_eq!(positive.num_extensions(), 1);
+        assert_eq!(negative.num_extensions(), 1);
+        assert_eq!(positive.compare_to_zero().expect("Expected Some"), Ordering::Greater);
+        assert_eq!(negative.compare_to_zero().expect("Expected Some"), Ordering::Less);
+    }
 }
