@@ -90,6 +90,28 @@ impl FieldValue {
     pub fn compare_to_zero(&self) -> Option<Ordering> {
         return self.value.compare_to_zero(&self.context);
     }
+
+    // self is mutable here because we mutate the FieldTower associated with it.
+    pub fn sqrt(&mut self) -> Option<FieldValue> {
+        let result: RawSqrtResult = self.value.sqrt(&self.context)?;
+        match result {
+            RawSqrtResult::NOSOLUTION => panic!("Tried to take sqrt of negative number"),
+            RawSqrtResult::SOLUTION(solution) => return Option::Some(FieldValue {
+                value: solution.clone(),
+                context: self.context.clone(),
+            }),
+            RawSqrtResult::EXTENSION(new_root_request) => {
+                self.context.add_root(FieldValue { value: new_root_request.root.clone(), context: self.context.clone() });
+                return Option::Some(FieldValue {
+                    value: RawFieldValue::EXTENDED(RawExtendedValue {
+                        base: Box::new(RawFieldValue::zero(self.num_extensions())),
+                        extension: Box::new(new_root_request.coefficient),
+                    }),
+                    context: self.context.clone(),
+                })
+            }
+        }
+    }
 }
 
 impl Add for FieldValue {
@@ -545,8 +567,15 @@ impl RawFieldValue {
     fn sqrt_of_zero_extension(base_of_extended: &RawFieldValue, context: &FieldTower) -> Option<RawSqrtResult> {
         match base_of_extended.sqrt(context)? {
             RawSqrtResult::NOSOLUTION => panic!("Cannot happen, we checked that the argument is positive"),
-            RawSqrtResult::SOLUTION(solution) => return Some(RawSqrtResult::SOLUTION(solution)),
+            RawSqrtResult::SOLUTION(solution) => return Some(RawSqrtResult::SOLUTION(
+                RawFieldValue::EXTENDED(RawExtendedValue {
+                    base: Box::new(solution),
+                    extension: Box::new(RawFieldValue::zero(base_of_extended.num_extensions())),
+                }))),
             RawSqrtResult::EXTENSION(preferred_extension) => {
+                // This method was called from a value with two extensions.
+                // Then we receive a value here with one extension.
+                // We need the second root added to the tower which has index one.
                 let existing_root_index = base_of_extended.num_extensions();
                 let existing_root: &RawFieldValue = &context.data.borrow().roots[existing_root_index as usize];
                 let base_of_extended_times_existing_root = base_of_extended.checked_mul(existing_root, context)?;
@@ -557,10 +586,13 @@ impl RawFieldValue {
                         // We have sqrt(p) = sqrt(p)*sqrt(pc)/sqrt(pc) = p*sqrt(c)/sqrt(pc).
                         // The coefficient we need is p/sqrt(pc).
                         let existing_root_coefficient: RawFieldValue = base_of_extended.checked_div(&solution, context)?;
-                        return Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::EXTENDED(RawExtendedValue {
-                            base: Box::new(RawFieldValue::zero(existing_root_coefficient.num_extensions())),
-                            extension: Box::new(existing_root_coefficient),
-                        })))},
+                        return Option::Some(RawSqrtResult::SOLUTION(
+                            RawFieldValue::EXTENDED(RawExtendedValue {
+                                base: Box::new(RawFieldValue::zero(base_of_extended.num_extensions())),
+                                extension: Box::new(existing_root_coefficient),
+                            })
+                        ));
+                    },
                     RawSqrtResult::EXTENSION(_) => {
                         return Option::Some(RawSqrtResult::EXTENSION(preferred_extension))
                     },
@@ -997,5 +1029,15 @@ mod test {
         assert_eq!(negative.num_extensions(), 1);
         assert_eq!(positive.compare_to_zero().expect("Expected Some"), Ordering::Greater);
         assert_eq!(negative.compare_to_zero().expect("Expected Some"), Ordering::Less);
+    }
+
+    #[test]
+    fn when_we_take_sqrt_of_rational_square_we_get_plain_rational() {
+        let tower: FieldTower = FieldTower::new();
+        let mut value: FieldValue = tower.value(Rational32::new(4, 1));
+        let sqrt_value: FieldValue = value.sqrt().expect("square root of 4 exists");
+        assert_eq!(tower.data.borrow().roots.len(), 0);
+        assert_eq!(sqrt_value.num_extensions(), 0);
+        assert_eq!(sqrt_value.to_string(), "2");
     }
 }
