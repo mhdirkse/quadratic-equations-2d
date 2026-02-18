@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt::Debug;
+use std::cmp::Ordering;
 use std::ops::{Add, Sub, Mul, Div};
 use num_rational::Rational32;
 use num_traits::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv};
@@ -440,6 +441,54 @@ impl RawFieldValue {
                 extension: Box::new(RawFieldValue::zero(num_extensions - 1))
             });
         }
+    }
+
+    fn compare_to_zero(&self, context: &FieldTower) -> Option<Ordering> {
+        match self {
+            RawFieldValue::BASIC(base) => Option::Some(RawFieldValue::compare_basic_to_zero(&base)),
+            RawFieldValue::EXTENDED(extended) => RawFieldValue::compare_extended_to_zero(&extended, context)
+        }
+    }
+
+    // TODO: Test edge cases where difference does not fit in Rational32
+    fn compare_basic_to_zero(base: &Base) -> Ordering {
+        if base == &Base::new(0, 1) {
+            return Ordering::Equal
+        } else if base < &Base::new(0, 1) {
+            return Ordering::Less
+        } else {
+            return Ordering::Greater
+        }
+    }
+
+    fn compare_extended_to_zero(extended: &RawExtendedValue, context: &FieldTower) -> Option<Ordering> {
+        match extended.base.compare_to_zero(context)? {
+            Ordering::Equal => extended.extension.compare_to_zero(context),
+            Ordering::Less =>
+                match extended.extension.compare_to_zero(context)? {
+                    Ordering::Less => Option::Some(Ordering::Less),
+                    Ordering::Equal => Option::Some(Ordering::Less),
+                    Ordering::Greater => Option::Some(RawFieldValue::compare_base_to_extension(extended, context)?.reverse()),
+                },
+            Ordering::Greater => 
+                match extended.extension.compare_to_zero(context)? {
+                    Ordering::Less => RawFieldValue::compare_base_to_extension(extended, context),
+                    Ordering::Equal => Option::Some(Ordering::Greater),
+                    Ordering::Greater => Option::Some(Ordering::Greater)
+                }
+        }
+    }
+
+    fn compare_base_to_extension(extended: &RawExtendedValue, context: &FieldTower) -> Option<Ordering> {
+        let root_index = extended.base.num_extensions();
+        let root: &RawFieldValue = &context.data.borrow().roots[root_index as usize];
+        let first = extended.base.checked_mul(&extended.base, context)?;
+        let second = extended.extension.checked_mul(
+            &extended.extension.checked_mul(root, context)?,
+            context
+        )?;
+        let difference = first.checked_sub(&second, context)?;
+        return difference.compare_to_zero(context);
     }
 
     fn to_string(value: &RawFieldValue, context: &FieldTower) -> String {
