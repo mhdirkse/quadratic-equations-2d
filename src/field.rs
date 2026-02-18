@@ -9,6 +9,8 @@ use crate::sqrt::sqrt;
 
 pub type Base = Rational32;
 
+const RECURSION_THRESHOLD: u32 = 10;
+
 #[derive(Clone)]
 #[derive(Debug)]
 pub struct FieldTower {
@@ -93,7 +95,9 @@ impl FieldValue {
 
     // self is mutable here because we mutate the FieldTower associated with it.
     pub fn sqrt(&mut self) -> Option<FieldValue> {
-        let result: RawSqrtResult = self.value.sqrt(&self.context)?;
+        // We should work from the outermost field, otherwise we reintroduce existing roots.
+        // This is why we promote before doing RawFieldValue::sqrt.
+        let result: RawSqrtResult = self.promote().value.sqrt(&self.context, 0)?;
         match result {
             RawSqrtResult::NOSOLUTION => panic!("Tried to take sqrt of negative number"),
             RawSqrtResult::SOLUTION(solution) => return Option::Some(FieldValue {
@@ -110,6 +114,14 @@ impl FieldValue {
                     context: self.context.clone(),
                 })
             }
+        }
+    }
+
+    // For testing purposes
+    fn promote(&self) -> Self {
+        FieldValue {
+            value: RawFieldValue::promote(&self.value, self.context.data.borrow().roots.len() as u32),
+            context: self.context.clone()
         }
     }
 }
@@ -455,12 +467,15 @@ impl RawFieldValue {
         let num_existing_extensions = v.num_extensions();
         if num_required_extensions < num_existing_extensions {
             panic!("promote(): Cannot promote from {} to {} extensions", num_existing_extensions, num_required_extensions);
+        } else if num_required_extensions == num_existing_extensions {
+            return v.clone()
         } else if num_required_extensions == num_existing_extensions + 1 {
             return RawFieldValue::EXTENDED(RawExtendedValue {
                 base: Box::new(v.clone()),
                 extension: Box::new(RawFieldValue::zero(num_existing_extensions))
             });
         } else {
+            println!("Recursive promote");
             return RawFieldValue::promote(
                 &RawFieldValue::promote(
                     v,
@@ -529,18 +544,25 @@ impl RawFieldValue {
         return difference.compare_to_zero(context);
     }
 
-    fn sqrt(&self, context: &FieldTower) -> Option<RawSqrtResult> {
+    // We assume here that self has been promoted to the outermost field.
+    // We cannot promote inside this method because it is called recursively.
+    fn sqrt(&self, context: &FieldTower, recursion: u32) -> Option<RawSqrtResult> {
+        if recursion >= RECURSION_THRESHOLD {
+            panic!("Max recursion depth reached");
+        }
         match self.compare_to_zero(context)? {
             Ordering::Less => Option::Some(RawSqrtResult::NOSOLUTION),
             Ordering::Equal => Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::BASIC(Rational32::new(0, 1)))),
             Ordering::Greater => {
                 match self {
-                    RawFieldValue::BASIC(base) => RawFieldValue::sqrt_of_base(base),
+                    RawFieldValue::BASIC(base) => RawFieldValue::sqrt_of_base(&base, recursion),
                     RawFieldValue::EXTENDED(extended) => {
                         if (*extended.extension).eq(&RawFieldValue::zero(extended.extension.num_extensions())) {
-                            RawFieldValue::sqrt_of_zero_extension(&extended.base, context)
+                            RawFieldValue::sqrt_of_zero_extension(&extended.base, context, recursion)
+                        } else if (*extended.base).eq(&RawFieldValue::zero(extended.base.num_extensions())) {
+                            RawFieldValue::sqrt_of_zero_base(&extended.extension, context, recursion)
                         } else {
-                            RawFieldValue::sqrt_of_nonzero_extension(extended, context)
+                            RawFieldValue::sqrt_of_nonzero_extension(&extended, context, recursion)
                         }
                     }
                 }
@@ -548,7 +570,7 @@ impl RawFieldValue {
         }
     }
 
-    fn sqrt_of_base(base: &Base) -> Option<RawSqrtResult> {
+    fn sqrt_of_base(base: &Base, _: u32) -> Option<RawSqrtResult> {
         let result: (Base, u32) = sqrt(base.clone())?;
         if result.1 == 1 {
             Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::BASIC(result.0)))
@@ -564,8 +586,8 @@ impl RawFieldValue {
         }
     }
 
-    fn sqrt_of_zero_extension(base_of_extended: &RawFieldValue, context: &FieldTower) -> Option<RawSqrtResult> {
-        match base_of_extended.sqrt(context)? {
+    fn sqrt_of_zero_extension(base_of_extended: &RawFieldValue, context: &FieldTower, recursion: u32) -> Option<RawSqrtResult> {
+        match base_of_extended.sqrt(context, recursion + 1)? {
             RawSqrtResult::NOSOLUTION => panic!("Cannot happen, we checked that the argument is positive"),
             RawSqrtResult::SOLUTION(solution) => return Some(RawSqrtResult::SOLUTION(
                 RawFieldValue::EXTENDED(RawExtendedValue {
@@ -579,7 +601,7 @@ impl RawFieldValue {
                 let existing_root_index = base_of_extended.num_extensions();
                 let existing_root: &RawFieldValue = &context.data.borrow().roots[existing_root_index as usize];
                 let base_of_extended_times_existing_root = base_of_extended.checked_mul(existing_root, context)?;
-                match base_of_extended_times_existing_root.sqrt(context)? {
+                match base_of_extended_times_existing_root.sqrt(context, recursion + 1)? {
                     RawSqrtResult::NOSOLUTION => panic!("Cannot happen, we checked that base_of_extended is positive and roots are positive"),
                     RawSqrtResult::SOLUTION(solution) => {
                         // If sqrt(c) is the existing root and if base_of_extended is p, we want to express sqrt(p).
@@ -601,7 +623,11 @@ impl RawFieldValue {
         }
     }
 
-    fn sqrt_of_nonzero_extension(extended: &RawExtendedValue, context: &FieldTower) -> Option<RawSqrtResult> {
+    fn sqrt_of_zero_base(extension_of_extended: &RawFieldValue, context: &FieldTower, _: u32) -> Option<RawSqrtResult> {
+        panic!("Not yet implemented");
+    }
+
+    fn sqrt_of_nonzero_extension(extended: &RawExtendedValue, context: &FieldTower, _: u32) -> Option<RawSqrtResult> {
         panic!("Not yet implemented");
     }
 
@@ -614,7 +640,7 @@ impl RawFieldValue {
                 let root_index = value.num_extensions() as usize - 1;
                 let root_of: &RawFieldValue = &context.data.borrow().roots[root_index];
                 let root_of_str = RawFieldValue::to_string(&root_of, &context);
-                return format!("{}+{}*sqrt({})", base_str, extended_coeff_str, root_of_str);
+                return format!("({}+{}*sqrt({}))", base_str, extended_coeff_str, root_of_str);
             }
         }
     }
@@ -696,7 +722,7 @@ mod test {
             context: tower,
             value: raw_test_value
         };
-        assert_eq!("3+5*sqrt(2)", test_value.to_string());
+        assert_eq!("(3+5*sqrt(2))", test_value.to_string());
     }
 
     #[test]
@@ -788,7 +814,7 @@ mod test {
         let simple: FieldValue = tower.value(Rational32::new(6, 1));
         let result_1: FieldValue = extended.checked_add(&simple).expect("No overflow expected");
         let result_2: FieldValue = simple.checked_add(&extended).expect("No overflow expected");
-        let expected_str = "9+5*sqrt(2)";
+        let expected_str = "(9+5*sqrt(2))";
         assert_eq!(result_1.to_string(), expected_str);
         assert_eq!(result_2.to_string(), expected_str);
     }
@@ -854,7 +880,7 @@ mod test {
         let simple: FieldValue = tower.value(Rational32::new(6, 1));
         let result_1: FieldValue = extended.checked_mul(&simple).expect("No overflow expected");
         let result_2: FieldValue = simple.checked_mul(&extended).expect("No overflow expected");
-        let expected_str = "18+30*sqrt(2)";
+        let expected_str = "(18+30*sqrt(2))";
         assert_eq!(result_1.to_string(), expected_str);
         assert_eq!(result_2.to_string(), expected_str);
     }
@@ -1039,5 +1065,51 @@ mod test {
         assert_eq!(tower.data.borrow().roots.len(), 0);
         assert_eq!(sqrt_value.num_extensions(), 0);
         assert_eq!(sqrt_value.to_string(), "2");
+    }
+
+    #[test]
+    fn when_we_have_one_extension_we_do_not_unnecessarily_extend() {
+        let tower: FieldTower = FieldTower::new();
+        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
+        assert_eq!(tower.data.borrow().roots.len(), 1);
+        assert_eq!(sqrt_of_two.num_extensions(), 1);
+        assert_eq!(sqrt_of_two.to_string(), "(0+1*sqrt(2))");
+        let mut promoted_nine: FieldValue = tower.value(Rational32::new(9, 1)).promote();
+        let sqrt_of_nine: FieldValue = promoted_nine.sqrt().expect("sqrt(9) should exist");        
+        assert_eq!(sqrt_of_nine.num_extensions(), 1);
+        assert_eq!(sqrt_of_nine.to_string(), "(3+0*sqrt(2))");
+        let mut eighteen = tower.value(Rational32::new(18, 1));
+        let sqrt_of_eighteen = eighteen.sqrt().expect("sqrt(18) should exist");
+        assert_eq!(sqrt_of_eighteen.num_extensions(), 1);
+        assert_eq!(sqrt_of_eighteen.to_string(), "(0+3*sqrt(2))");
+    }
+
+    #[test]
+    fn when_we_have_two_extensions_we_do_not_unnecessarily_extend_roots_of_plain_rationals() {
+        let tower: FieldTower = FieldTower::new();
+        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
+        let mut three: FieldValue = tower.value(Rational32::new(3, 1));
+        let sqrt_of_three:FieldValue = three.sqrt().expect("sqrt(3) should exist");
+        let mut promoted_four = tower.value(Rational32::new(4, 1)).promote();
+        assert_eq!(promoted_four.num_extensions(), 2);
+        let sqrt_of_four = promoted_four.sqrt().expect("sqrt(4) should exist");
+        assert_eq!(sqrt_of_four.num_extensions(), 2);
+        if let RawFieldValue::EXTENDED(extended) = &sqrt_of_four.value {
+            assert_eq!(extended.base.num_extensions(), 1);
+            assert_eq!(extended.extension.num_extensions(), 1);
+        } else {
+            panic!("sqrt_of_four is expected to enum RawFieldValue::EXTENDED");
+        }
+        assert_eq!(sqrt_of_four.to_string(), "((2+0*sqrt(2))+(0+0*sqrt(2))*sqrt(3))");
+        let sqrt_eight: FieldValue = tower.value(Rational32::new(8, 1)).sqrt().expect("sqrt(8) should exist");
+        // Check that sqrt(2) is not added again to the FieldTower.
+        assert_eq!(tower.data.borrow().roots.len(), 2);
+        assert_eq!(sqrt_eight.to_string(), "((0+2*sqrt(2))+(0+0*sqrt(2))*sqrt(3))");
+        let sqrt_twelve = tower.value(Rational32::new(12, 1)).sqrt().expect("sqrt(12) should exist");
+        assert_eq!(sqrt_twelve.to_string(), "((0+0*sqrt(2))+(2+0*sqrt(2))*sqrt(3))");
+        let sqrt_six = tower.value(Rational32::new(6, 1)).sqrt().expect("sqrt(6) should exist");
+        assert_eq!(sqrt_six.to_string(), "((0+0*sqrt(2))+(0+1*sqrt(2))*sqrt(3))");
     }
 }
