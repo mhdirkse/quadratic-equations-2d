@@ -555,7 +555,7 @@ fn is_power_of_two(n: usize) -> bool {
 mod test {
     use std::i32;
 
-    use crate::field::{FieldTower, FieldValue, RawFieldValue};
+    use crate::field::{FieldTower, FieldValue, RawFieldValue, RawExtendedValue};
     use num_rational::Rational32;
     use num_traits::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv};
     use std::cmp::Ordering;
@@ -790,5 +790,62 @@ mod test {
         assert_eq!(small.compare_to_zero().expect("Expected Some"), Ordering::Less);
         assert_eq!(big.compare_to_zero().expect("Expected Some"), Ordering::Greater);
         assert_eq!(zero.compare_to_zero().expect("Expected Some"), Ordering::Equal);
+    }
+
+    #[test]
+    fn when_coefficient_root_zero_then_sign_of_nonroot_coefficient_returned() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+        let positive = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(1, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(0,1))),
+            }),
+            context: tower.clone(),
+        };
+        let negative = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(-1, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(0, 1))),
+            }),
+            context: tower.clone(),
+        };
+        let zero = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(0, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(0, 1))),
+            }),
+            context: tower.clone(),
+        };
+        assert_eq!(positive.num_extensions(), 1);
+        assert_eq!(negative.num_extensions(), 1);
+        assert_eq!(zero.num_extensions(), 1);
+        assert_eq!(positive.compare_to_zero().expect("Expected Some"), Ordering::Greater);
+        assert_eq!(negative.compare_to_zero().expect("Expected Some"), Ordering::Less);
+        assert_eq!(zero.compare_to_zero().expect("Expected Some"), Ordering::Equal);
+    }
+
+    #[test]
+    fn when_coefficient_nonroot_zero_then_sign_of_root_coefficient_returned() {
+        let mut tower: FieldTower = FieldTower::new();
+        tower.add_root(tower.value(Rational32::new(2, 1)));
+        let positive = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(0, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(1,1))),
+            }),
+            context: tower.clone(),
+        };
+        let negative = FieldValue {
+            value: RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(RawFieldValue::BASIC(Rational32::new(0, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational32::new(-1, 1))),
+            }),
+            context: tower.clone(),
+        };
+        assert_eq!(positive.num_extensions(), 1);
+        assert_eq!(negative.num_extensions(), 1);
+        assert_eq!(positive.compare_to_zero().expect("Expected Some"), Ordering::Greater);
+        assert_eq!(negative.compare_to_zero().expect("Expected Some"), Ordering::Less);
     }
 }
