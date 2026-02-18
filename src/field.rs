@@ -646,7 +646,7 @@ mod test {
     }
 
     #[test]
-    fn when_adding_produces_overflow_than_none_returned() {
+    fn when_adding_produces_overflow_then_none_returned() {
         let mut tower: FieldTower = FieldTower::new();
         tower.add_root(tower.value(Rational32::new(2, 1)));
         let big_base = FieldValue {
@@ -712,7 +712,7 @@ mod test {
     }
 
     #[test]
-    fn when_multiplying_produces_overflow_than_none_returned() {
+    fn when_multiplying_produces_overflow_then_none_returned() {
         let mut tower: FieldTower = FieldTower::new();
         tower.add_root(tower.value(Rational32::new(2, 1)));
         let big_base = FieldValue {
