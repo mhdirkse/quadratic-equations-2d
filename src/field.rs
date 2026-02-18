@@ -5,6 +5,8 @@ use std::cmp::Ordering;
 use std::ops::{Add, Sub, Mul, Div};
 use num_rational::Rational32;
 use num_traits::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv};
+use crate::sqrt::sqrt;
+
 pub type Base = Rational32;
 
 #[derive(Clone)]
@@ -35,6 +37,17 @@ enum RawFieldValue {
 struct RawExtendedValue {
     base: Box<RawFieldValue>,
     extension: Box<RawFieldValue>
+}
+
+enum RawSqrtResult {
+    NOSOLUTION,
+    SOLUTION(RawFieldValue),
+    EXTENSION(RawNewRootRequest),
+}
+
+struct RawNewRootRequest {
+    coefficient: RawFieldValue,
+    root: RawFieldValue
 }
 
 impl FieldTower {
@@ -454,7 +467,6 @@ impl RawFieldValue {
         }
     }
 
-    // TODO: Test edge cases where difference does not fit in Rational32
     fn compare_basic_to_zero(base: &Base) -> Ordering {
         if base == &Base::new(0, 1) {
             return Ordering::Equal
@@ -493,6 +505,72 @@ impl RawFieldValue {
         )?;
         let difference = first.checked_sub(&second, context)?;
         return difference.compare_to_zero(context);
+    }
+
+    fn sqrt(&self, context: &FieldTower) -> Option<RawSqrtResult> {
+        match self.compare_to_zero(context)? {
+            Ordering::Less => Option::Some(RawSqrtResult::NOSOLUTION),
+            Ordering::Equal => Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::BASIC(Rational32::new(0, 1)))),
+            Ordering::Greater => {
+                match self {
+                    RawFieldValue::BASIC(base) => RawFieldValue::sqrt_of_base(base),
+                    RawFieldValue::EXTENDED(extended) => {
+                        if (*extended.extension).eq(&RawFieldValue::zero(extended.extension.num_extensions())) {
+                            RawFieldValue::sqrt_of_zero_extension(&extended.base, context)
+                        } else {
+                            RawFieldValue::sqrt_of_nonzero_extension(extended, context)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn sqrt_of_base(base: &Base) -> Option<RawSqrtResult> {
+        let result: (Base, u32) = sqrt(base.clone())?;
+        if result.1 == 1 {
+            Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::BASIC(result.0)))
+        } else {
+            if result.1 > (i32::MAX as u32) {
+                Option::None
+            } else {
+                Option::Some(RawSqrtResult::EXTENSION(RawNewRootRequest {
+                    coefficient: RawFieldValue::BASIC(result.0),
+                    root: RawFieldValue::BASIC(Base::new(result.1 as i32, 1))
+                }))
+            }
+        }
+    }
+
+    fn sqrt_of_zero_extension(base_of_extended: &RawFieldValue, context: &FieldTower) -> Option<RawSqrtResult> {
+        match base_of_extended.sqrt(context)? {
+            RawSqrtResult::NOSOLUTION => panic!("Cannot happen, we checked that the argument is positive"),
+            RawSqrtResult::SOLUTION(solution) => return Some(RawSqrtResult::SOLUTION(solution)),
+            RawSqrtResult::EXTENSION(preferred_extension) => {
+                let existing_root_index = base_of_extended.num_extensions();
+                let existing_root: &RawFieldValue = &context.data.borrow().roots[existing_root_index as usize];
+                let base_of_extended_times_existing_root = base_of_extended.checked_mul(existing_root, context)?;
+                match base_of_extended_times_existing_root.sqrt(context)? {
+                    RawSqrtResult::NOSOLUTION => panic!("Cannot happen, we checked that base_of_extended is positive and roots are positive"),
+                    RawSqrtResult::SOLUTION(solution) => {
+                        // If sqrt(c) is the existing root and if base_of_extended is p, we want to express sqrt(p).
+                        // We have sqrt(p) = sqrt(p)*sqrt(pc)/sqrt(pc) = p*sqrt(c)/sqrt(pc).
+                        // The coefficient we need is p/sqrt(pc).
+                        let existing_root_coefficient: RawFieldValue = base_of_extended.checked_div(&solution, context)?;
+                        return Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::EXTENDED(RawExtendedValue {
+                            base: Box::new(RawFieldValue::zero(existing_root_coefficient.num_extensions())),
+                            extension: Box::new(existing_root_coefficient),
+                        })))},
+                    RawSqrtResult::EXTENSION(_) => {
+                        return Option::Some(RawSqrtResult::EXTENSION(preferred_extension))
+                    },
+                };
+            },
+        }
+    }
+
+    fn sqrt_of_nonzero_extension(extended: &RawExtendedValue, context: &FieldTower) -> Option<RawSqrtResult> {
+        panic!("Not yet implemented");
     }
 
     fn to_string(value: &RawFieldValue, context: &FieldTower) -> String {
