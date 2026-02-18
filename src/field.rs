@@ -73,6 +73,10 @@ impl FieldValue {
     pub fn num_extensions(&self) -> u32 {
         return self.value.num_extensions();
     }
+
+    pub fn compare_to_zero(&self) -> Option<Ordering> {
+        return self.value.compare_to_zero(&self.context);
+    }
 }
 
 impl Add for FieldValue {
@@ -549,9 +553,12 @@ fn is_power_of_two(n: usize) -> bool {
 
 #[cfg(test)]
 mod test {
+    use std::i32;
+
     use crate::field::{FieldTower, FieldValue, RawFieldValue};
     use num_rational::Rational32;
     use num_traits::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv};
+    use std::cmp::Ordering;
 
     #[test]
     fn field_tower_only_clones_are_equal() {
@@ -772,5 +779,16 @@ mod test {
         let result = optional_result.expect("Unexpected overflow");
         assert_eq!(result.to_string(), expected.to_string());
         assert_eq!(result == expected, true);
+    }
+
+    #[test]
+    fn comparing_rationals() {
+        let tower: FieldTower = FieldTower::new();
+        let big: FieldValue = tower.value(Rational32::new(i32::MAX, 1));
+        let small: FieldValue = tower.value(Rational32::new(i32::MIN, 1));
+        let zero: FieldValue = tower.value(Rational32::new(0, 1));
+        assert_eq!(small.compare_to_zero().expect("Expected Some"), Ordering::Less);
+        assert_eq!(big.compare_to_zero().expect("Expected Some"), Ordering::Greater);
+        assert_eq!(zero.compare_to_zero().expect("Expected Some"), Ordering::Equal);
     }
 }
