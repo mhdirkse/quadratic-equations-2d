@@ -52,6 +52,11 @@ struct RawNewRootRequest {
     root: RawFieldValue
 }
 
+enum SqrtCandidateCheck {
+    NO_MATCH,
+    MATCH(RawFieldValue)
+}
+
 impl FieldTower {
     pub fn new() -> Self {
         let data: FieldTowerData = FieldTowerData {roots: vec![]};
@@ -443,7 +448,7 @@ impl RawFieldValue {
         match first {
             RawFieldValue::BASIC(base) => {
                 match second {
-                    RawFieldValue::BASIC(otherBase) => return base == otherBase,
+                    RawFieldValue::BASIC(other_base) => return base == other_base,
                     RawFieldValue::EXTENDED(_) => {
                         panic!("RawFieldValue::compare_impl(): Cannot happen because RawFieldValue::promote() was applied");
                     }
@@ -652,8 +657,66 @@ impl RawFieldValue {
         }
     }
 
-    fn sqrt_of_nonzero_extension(extended: &RawExtendedValue, context: &FieldTower, _: u32) -> Option<RawSqrtResult> {
-        panic!("Not yet implemented");
+    fn sqrt_of_nonzero_extension(extended: &RawExtendedValue, context: &FieldTower, recursion: u32) -> Option<RawSqrtResult> {
+        let original: RawFieldValue = RawFieldValue::EXTENDED(RawExtendedValue {
+            base: extended.base.clone(),
+            extension: extended.extension.clone()
+        });
+        let root_index: u32 = extended.base.num_extensions();
+        let root: RawFieldValue = RawFieldValue::promote(&context.data.borrow().roots[root_index as usize], root_index);
+        let two: RawFieldValue = RawFieldValue::promote(&RawFieldValue::BASIC(Base::new(2, 1)), root_index);
+        let term1: RawFieldValue = extended.base.checked_div(&root.checked_mul(&two, &context)?, &context)?;
+        let discriminant: RawFieldValue = RawFieldValue::pseudo_norm(&extended, &root, &context)?;
+        // discriminant has the same number of extensions as extended.base and extended.extension.
+        // We ignore the latest root on purpose.
+        let optional_sqrt_discriminant: RawSqrtResult = RawFieldValue::sqrt(&discriminant, context, recursion + 1)?;
+        if let RawSqrtResult::SOLUTION(root_discriminant) = optional_sqrt_discriminant {
+            let term2: RawFieldValue = root_discriminant.checked_div(&root.checked_mul(&two, &context)?, &context)?;
+            let candidate_1: RawFieldValue = term1.checked_sub(&term2, &context)?;
+            let match_1: SqrtCandidateCheck = RawFieldValue::check_sqrt_candidate(&candidate_1, extended, context, recursion + 1)?;
+            if let SqrtCandidateCheck::MATCH(pattern_match_1) = match_1 {
+                return Option::Some(RawSqrtResult::SOLUTION(pattern_match_1))
+            } else {
+                let candidate_2: RawFieldValue = term1.checked_add(&term2, &context)?;
+                let match_2: SqrtCandidateCheck = RawFieldValue::check_sqrt_candidate(&candidate_2, extended, context, recursion + 1)?;
+                if let SqrtCandidateCheck::MATCH(pattern_match_2) = match_2 {
+                    return Option::Some(RawSqrtResult::SOLUTION(pattern_match_2));
+                } else {
+                    return RawFieldValue::raw_field_value_as_root(&original);
+                }
+            }
+        } else {
+            return RawFieldValue::raw_field_value_as_root(&original);
+        }
+    }
+
+    // sqr_candidate has one extension less than original
+    fn check_sqrt_candidate(sqr_candidate: &RawFieldValue, original: &RawExtendedValue, context: &FieldTower, recursion: u32) -> Option<SqrtCandidateCheck> {
+        let extension_candidate_option: RawSqrtResult = sqr_candidate.sqrt(context, recursion)?;
+        if let RawSqrtResult::SOLUTION(extension_candidate) = extension_candidate_option {
+            let two: RawFieldValue = RawFieldValue::promote(&RawFieldValue::BASIC(Base::new(2, 1)), sqr_candidate.num_extensions());
+            let base_candidate: RawFieldValue = original.extension.checked_div(&extension_candidate.checked_mul(&two, context)?, context)?;
+            let candidate = RawFieldValue::EXTENDED(RawExtendedValue {
+                base: Box::new(base_candidate),
+                extension: Box::new(extension_candidate)
+            });
+            let sqr_candidate: RawFieldValue = candidate.checked_mul(&candidate, context)?;
+            if sqr_candidate == RawFieldValue::EXTENDED(RawExtendedValue { base: original.base.clone(), extension: original.extension.clone() }) {
+                return Option::Some(SqrtCandidateCheck::MATCH(candidate));
+            } else {
+                return Option::Some(SqrtCandidateCheck::NO_MATCH);
+            }
+        } else {
+            return Option::Some(SqrtCandidateCheck::NO_MATCH);
+        }
+    }
+
+    fn raw_field_value_as_root(v: &RawFieldValue) -> Option<RawSqrtResult> {
+        let num_extensions: u32 = v.num_extensions();
+        Option::Some(RawSqrtResult::EXTENSION(RawNewRootRequest {
+            coefficient: RawFieldValue::promote(&RawFieldValue::BASIC(Base::new(1, 1)), num_extensions),
+            root: v.clone(),
+        }))
     }
 
     fn to_string(value: &RawFieldValue, context: &FieldTower) -> String {
@@ -1114,9 +1177,9 @@ mod test {
     fn when_we_have_two_extensions_we_do_not_unnecessarily_extend_roots_of_plain_rationals() {
         let tower: FieldTower = FieldTower::new();
         let mut two: FieldValue = tower.value(Rational32::new(2, 1));
-        let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
+        two.sqrt().expect("sqrt(2) should exist");
         let mut three: FieldValue = tower.value(Rational32::new(3, 1));
-        let sqrt_of_three:FieldValue = three.sqrt().expect("sqrt(3) should exist");
+        three.sqrt().expect("sqrt(3) should exist");
         let mut promoted_four = tower.value(Rational32::new(4, 1)).promote();
         assert_eq!(promoted_four.num_extensions(), 2);
         let sqrt_of_four = promoted_four.sqrt().expect("sqrt(4) should exist");
@@ -1188,6 +1251,20 @@ mod test {
         assert_eq!(sqrt_of_it.context.data.borrow().roots.len(), 2);
         let the_root: RawFieldValue = sqrt_of_it.context.data.borrow().roots.last().expect("second root should exist").clone();
         check_integrity(&the_root, 1);
+    }
+
+    #[test]
+    fn when_complex_root_exists_then_found() {
+        // (sqrt(2) - 1)^2 = 3 - 2*sqrt(2);
+        let tower: FieldTower = FieldTower::new();
+        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
+        let mut original: FieldValue = tower.value(Rational32::new(3, 1)).checked_sub(
+            &two.checked_mul(&sqrt_of_two).expect("Term should exist"),
+        ).expect("Value should exist");
+        let result: FieldValue = original.sqrt().expect("sqrt(3 - 2*sqrt(2)) should exist");
+        assert_eq!(tower.data.borrow().roots.len(), 1);
+        assert_eq!(result.to_string(), "(-1+1*sqrt(2))");
     }
 
     fn check_integrity(v: &RawFieldValue, depth: u32) {
