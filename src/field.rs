@@ -623,8 +623,33 @@ impl RawFieldValue {
         }
     }
 
-    fn sqrt_of_zero_base(extension_of_extended: &RawFieldValue, context: &FieldTower, _: u32) -> Option<RawSqrtResult> {
-        panic!("Not yet implemented");
+    fn sqrt_of_zero_base(extension_of_extended: &RawFieldValue, context: &FieldTower, recursion: u32) -> Option<RawSqrtResult> {
+        println!("extension_of_extended={}", FieldValue {value: extension_of_extended.clone(), context: context.clone()}.to_string());
+        let root_index = extension_of_extended.num_extensions() as usize;
+        let root: &RawFieldValue = &context.data.borrow().roots[root_index];
+        let sqrt_of_extension_of_extended: RawSqrtResult =
+            RawFieldValue::promote(extension_of_extended, root_index as u32 + 1)
+                .sqrt(context, recursion + 1)?;
+        match sqrt_of_extension_of_extended {
+            RawSqrtResult::NOSOLUTION => panic!("Cannot happen, we checked already that extension_of_extended is positive"),
+            RawSqrtResult::SOLUTION(solution) => Option::Some(RawSqrtResult::EXTENSION(RawNewRootRequest {
+                coefficient: solution,
+                root: RawFieldValue::EXTENDED(RawExtendedValue {
+                    base: Box::new(RawFieldValue::zero(root_index as u32)),
+                    extension: Box::new(RawFieldValue::promote(&RawFieldValue::BASIC(Base::new(1, 1)), root_index as u32))
+            })})),
+            RawSqrtResult::EXTENSION(_) => {
+                let coefficient: RawFieldValue = RawFieldValue::promote(
+                    &RawFieldValue::BASIC(Base::new(1, 1)), 
+                    root_index as u32 + 1
+                );
+                let root = RawFieldValue::EXTENDED(RawExtendedValue {
+                    base: Box::new(RawFieldValue::zero(root_index as u32)),
+                    extension: Box::new(extension_of_extended.clone()), 
+                });
+                Option::Some(RawSqrtResult::EXTENSION(RawNewRootRequest { coefficient, root }))
+            }
+        }
     }
 
     fn sqrt_of_nonzero_extension(extended: &RawExtendedValue, context: &FieldTower, _: u32) -> Option<RawSqrtResult> {
@@ -1111,5 +1136,73 @@ mod test {
         assert_eq!(sqrt_twelve.to_string(), "((0+0*sqrt(2))+(2+0*sqrt(2))*sqrt(3))");
         let sqrt_six = tower.value(Rational32::new(6, 1)).sqrt().expect("sqrt(6) should exist");
         assert_eq!(sqrt_six.to_string(), "((0+0*sqrt(2))+(0+1*sqrt(2))*sqrt(3))");
+    }
+
+    #[test]
+    fn when_root_taken_with_square_extension_coefficient_then_extension_not_within_new_root() {
+        let tower: FieldTower = FieldTower::new();
+        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
+        let mut four_times_sqrt_two: FieldValue = tower
+            .value(Rational32::new(4, 1))
+            .checked_mul(&sqrt_of_two)
+            .expect("four times sqrt(2) should not produce overflow");
+        let sqrt_of_it = four_times_sqrt_two.sqrt().expect("Should be able to calculate sqrt(4 * sqrt(2))");
+        assert_eq!(sqrt_of_it.to_string(), "((0+0*sqrt(2))+(2+0*sqrt(2))*sqrt((0+1*sqrt(2))))");
+        // In the above the parenthesis are difficult to check. Test it another way.
+        check_integrity(&sqrt_of_it.value, 2);
+        assert_eq!(sqrt_of_it.context.data.borrow().roots.len(), 2);
+        let the_root: RawFieldValue = sqrt_of_it.context.data.borrow().roots.last().expect("There should be roots").clone();
+        check_integrity(&the_root, 1);
+    }
+
+    #[test]
+    fn when_root_taken_with_coefficient_matching_existing_root_then_extension_not_within_new_root() {
+        let tower: FieldTower = FieldTower::new();
+        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
+        let mut two_times_sqrt_two: FieldValue = tower
+            .value(Rational32::new(2, 1))
+            .checked_mul(&sqrt_of_two)
+            .expect("two times sqrt(2) should not produce overflow");
+        let sqrt_of_it: FieldValue = two_times_sqrt_two.sqrt().expect("sqrt(2*sqrt(2)) should exist");
+        assert_eq!(sqrt_of_it.to_string(), "((0+0*sqrt(2))+(0+1*sqrt(2))*sqrt((0+1*sqrt(2))))");
+        check_integrity(&sqrt_of_it.value, 2);
+        assert_eq!(sqrt_of_it.context.data.borrow().roots.len(), 2);
+        let the_root: RawFieldValue = sqrt_of_it.context.data.borrow().roots.last().expect("There should be roots").clone();
+        check_integrity(&the_root, 1);
+    }
+
+    #[test]
+    fn when_root_taken_with_coefficient_not_matching_existing_root_then_extension_within_new_root() {
+        let tower: FieldTower = FieldTower::new();
+        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
+        let mut three_times_sqrt_two: FieldValue = tower
+            .value(Rational32::new(3, 1))
+            .checked_mul(&sqrt_of_two)
+            .expect("three times sqrt(2) should not produce overflow");
+        let sqrt_of_it = three_times_sqrt_two.sqrt().expect("sqrt(3*sqrt(2)) should exist");
+        assert_eq!(sqrt_of_it.to_string(), "((0+0*sqrt(2))+(1+0*sqrt(2))*sqrt((0+3*sqrt(2))))");
+        check_integrity(&sqrt_of_it.value, 2);
+        assert_eq!(sqrt_of_it.context.data.borrow().roots.len(), 2);
+        let the_root: RawFieldValue = sqrt_of_it.context.data.borrow().roots.last().expect("second root should exist").clone();
+        check_integrity(&the_root, 1);
+    }
+
+    fn check_integrity(v: &RawFieldValue, depth: u32) {
+        if depth == 0 {
+            if let RawFieldValue::EXTENDED(_) = *v {
+                panic!("check_integrity(): Expected RawFieldValue::BASIC");
+            }
+        } else {
+            match v {
+                RawFieldValue::BASIC(_) => panic!("check_integrity(): Expected RawFieldValue::EXTENDED"),
+                RawFieldValue::EXTENDED(extended) => {
+                    check_integrity(&extended.base, depth - 1);
+                    check_integrity(&extended.extension, depth - 1);
+                }
+            }
+        }
     }
 }
