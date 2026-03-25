@@ -1244,6 +1244,18 @@ mod test {
     }
 
     #[test]
+    fn when_root_added_from_outer_field_then_coefficient_has_right_number_of_extensions() {
+        let tower: FieldTower = FieldTower::new();
+        let mut five: FieldValue = tower.value(Rational32::new(5, 1));
+        let sqrt_five: FieldValue = five.sqrt().expect("sqrt(5) should exist");
+        let one: FieldValue = tower.value(Rational32::new(1, 1));
+        let mut one_plus_sqrt_five: FieldValue = one.checked_add(&sqrt_five).expect("1+sqrt(5) should exist");
+        let new_sqrt: FieldValue = one_plus_sqrt_five.sqrt().expect("sqrt(1+sqrt(5)) should exist");
+        check_integrity(&new_sqrt.value, 2);
+        assert_eq!("((0+0*sqrt(5))+(1+0*sqrt(5))*sqrt((1+1*sqrt(5))))", new_sqrt.to_string());
+    }
+
+    #[test]
     fn when_root_taken_with_coefficient_matching_existing_root_then_extension_not_within_new_root() {
         let tower: FieldTower = FieldTower::new();
         let mut two: FieldValue = tower.value(Rational32::new(2, 1));
