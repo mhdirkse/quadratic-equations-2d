@@ -102,7 +102,8 @@ impl FieldValue {
     pub fn sqrt(&mut self) -> Option<FieldValue> {
         // We should work from the outermost field, otherwise we reintroduce existing roots.
         // This is why we promote before doing RawFieldValue::sqrt.
-        let result: RawSqrtResult = self.promote().value.sqrt(&self.context, 0)?;
+        let promoted: FieldValue = self.promote();
+        let result: RawSqrtResult = promoted.value.sqrt(&self.context, 0)?;
         match result {
             RawSqrtResult::NOSOLUTION => panic!("Tried to take sqrt of negative number"),
             RawSqrtResult::SOLUTION(solution) => return Option::Some(FieldValue {
@@ -113,7 +114,7 @@ impl FieldValue {
                 self.context.add_root(FieldValue { value: new_root_request.root.clone(), context: self.context.clone() });
                 return Option::Some(FieldValue {
                     value: RawFieldValue::EXTENDED(RawExtendedValue {
-                        base: Box::new(RawFieldValue::zero(self.num_extensions())),
+                        base: Box::new(RawFieldValue::zero(promoted.num_extensions())),
                         extension: Box::new(new_root_request.coefficient),
                     }),
                     context: self.context.clone(),
@@ -601,7 +602,7 @@ impl RawFieldValue {
                     extension: Box::new(RawFieldValue::zero(base_of_extended.num_extensions())),
                 }))),
             RawSqrtResult::EXTENSION(preferred_extension) => {
-                // This method was called from a value with two extensions.
+                // Assume this method was called from a value with two extensions.
                 // Then we receive a value here with one extension.
                 // We need the second root added to the tower which has index one.
                 let existing_root_index = base_of_extended.num_extensions();
@@ -622,7 +623,15 @@ impl RawFieldValue {
                         ));
                     },
                     RawSqrtResult::EXTENSION(_) => {
-                        return Option::Some(RawSqrtResult::EXTENSION(preferred_extension))
+                        // The coefficient of the RawNewRootRequest preferred_extension
+                        // comes from a recursive call of sqrt() that takes into account
+                        // less extensions. We should promote the coefficient to the
+                        // number of extensions the field has at this recursion level.
+                        let result = RawNewRootRequest {
+                            coefficient: RawFieldValue::promote(&preferred_extension.coefficient, base_of_extended.num_extensions() + 1),
+                            root: preferred_extension.root
+                        };
+                        return Option::Some(RawSqrtResult::EXTENSION(result))
                     },
                 };
             },
@@ -1224,6 +1233,17 @@ mod test {
     }
 
     #[test]
+    fn when_root_of_rational_added_to_already_extended_field_then_is_extension_of_extension() {
+        let tower: FieldTower = FieldTower::new();
+        let mut five: FieldValue = tower.value(Rational32::new(5, 1));
+        let sqrt_five: FieldValue = five.sqrt().expect("sqrt(5) should exist");
+        let mut six: FieldValue = tower.value(Rational32::new(6, 1));
+        let sqrt_six: FieldValue = six.sqrt().expect("sqrt(6) should exist");
+        assert_eq!("((0+0*sqrt(5))+(1+0*sqrt(5))*sqrt(6))", sqrt_six.to_string());
+        check_integrity(&sqrt_six.value, 2);
+    }
+
+    #[test]
     fn when_root_taken_with_coefficient_matching_existing_root_then_extension_not_within_new_root() {
         let tower: FieldTower = FieldTower::new();
         let mut two: FieldValue = tower.value(Rational32::new(2, 1));
@@ -1285,6 +1305,40 @@ mod test {
         let result = original.sqrt().expect("sqrt(17 - 12*sqrt(2)) should exist");
         assert_eq!(tower.data.borrow().roots.len(), 1);
         assert_eq!(result.to_string(), "(3+-2*sqrt(2))");
+    }
+
+    // TODO: Fails due to overflow. We need to use unbounded integers.
+    #[ignore]
+    #[test]
+    fn when_rationals_are_extended_two_times_then_can_solve_sqrt() {
+        // (4 + 3*sqrt(5) + 7*sqrt(6))^2 =
+        //     16 + 24*sqrt(5) + 56*sqrt(6) + 45 + 42*sqrt(5)*sqrt(6) + 294 =
+        //     355 + 24*sqrt(5) + (56 + 42*sqrt(5))*sqrt(6)
+        let tower: FieldTower = FieldTower::new();
+        let mut five: FieldValue = tower.value(Rational32::new(5, 1));
+        let sqrt_five: FieldValue = five.sqrt().expect("sqrt(5) should exist");
+        let mut six: FieldValue = tower.value(Rational32::new(6, 1));
+        let sqrt_six: FieldValue = six.sqrt().expect("sqrt(6) should exist");
+        println!("sqrt(6) shows as [{}]", sqrt_six.to_string());
+        check_integrity(&sqrt_six.value, 2);
+        assert_eq!(tower.data.borrow().roots.len(), 2);
+        let term1: FieldValue = tower.value(Rational32::new(355, 1));
+        let term2: FieldValue = tower.value(Rational32::new(24, 1))
+            .checked_mul(&sqrt_five).expect("24*sqrt(5) should exist");
+        assert_eq!("(0+24*sqrt(5))", term2.to_string());
+        let term31: FieldValue = tower.value(Rational32::new(56, 1));
+        let term32: FieldValue = tower.value(Rational32::new(42, 1))
+            .checked_mul(&sqrt_five).expect("42*sqrt(5) should exist");
+        let factor3 = term31.checked_add(&term32).expect("56 + 42*sqrt(5) should exist");
+        check_integrity(&factor3.value, 1);
+        let term3: FieldValue = factor3.checked_mul(&sqrt_six).expect("(56 + 42*sqrt(5))*sqrt(6) should exist");
+        check_integrity(&term3.value, 2);
+        let summed_1: FieldValue = term1.checked_add(&term2).expect("Sum of first two terms should exist");
+        let mut square: FieldValue = summed_1.checked_add(&term3).expect("Value to try sqrt with should exist");
+        check_integrity(&square.value, 2);
+        let actual: FieldValue = square.sqrt().expect("Should be able to take the sqrt");
+        check_integrity(&actual.value, 2);
+        assert_eq!("((4+3*sqrt(5)+(7+0*sqrt(5))*sqrt(6))", actual.to_string());
     }
 
     #[ignore]
