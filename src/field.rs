@@ -696,10 +696,13 @@ impl RawFieldValue {
         if let RawSqrtResult::SOLUTION(extension_candidate) = extension_candidate_option {
             let two: RawFieldValue = RawFieldValue::promote(&RawFieldValue::BASIC(Base::new(2, 1)), sqr_candidate.num_extensions());
             let base_candidate: RawFieldValue = original.extension.checked_div(&extension_candidate.checked_mul(&two, context)?, context)?;
-            let candidate = RawFieldValue::EXTENDED(RawExtendedValue {
+            let mut candidate = RawFieldValue::EXTENDED(RawExtendedValue {
                 base: Box::new(base_candidate),
                 extension: Box::new(extension_candidate)
             });
+            if let Ordering::Less = candidate.compare_to_zero(context)? {
+                candidate = RawFieldValue::BASIC(Base::new(0, 1)).checked_sub(&candidate, context)?;
+            }
             let sqr_candidate: RawFieldValue = candidate.checked_mul(&candidate, context)?;
             if sqr_candidate == RawFieldValue::EXTENDED(RawExtendedValue { base: original.base.clone(), extension: original.extension.clone() }) {
                 return Option::Some(SqrtCandidateCheck::MATCH(candidate));
@@ -1265,6 +1268,22 @@ mod test {
         let result: FieldValue = original.sqrt().expect("sqrt(3 - 2*sqrt(2)) should exist");
         assert_eq!(tower.data.borrow().roots.len(), 1);
         assert_eq!(result.to_string(), "(-1+1*sqrt(2))");
+    }
+
+    #[test]
+    fn when_complex_root_with_negative_root_coefficient_exists_then_positive_root_returned() {
+        // (3 - 2*sqrt(2))^2 = 17 - 12*sqrt(2)
+        let tower: FieldTower = FieldTower::new();
+        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
+        let seventeen = tower.value(Rational32::new(17, 1));
+        let twelve = tower.value(Rational32::new(12, 1));
+        let mut original: FieldValue = seventeen.checked_sub(
+            &twelve.checked_mul(&sqrt_of_two).expect("12*sqrt(2) should exist")
+        ).expect("17 - 12*sqrt(2) should exist");
+        let result = original.sqrt().expect("sqrt(17 - 12*sqrt(2)) should exist");
+        assert_eq!(tower.data.borrow().roots.len(), 1);
+        assert_eq!(result.to_string(), "(3+-2*sqrt(2))");
     }
 
     fn check_integrity(v: &RawFieldValue, depth: u32) {
