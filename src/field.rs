@@ -481,7 +481,6 @@ impl RawFieldValue {
                 extension: Box::new(RawFieldValue::zero(num_existing_extensions))
             });
         } else {
-            println!("Recursive promote");
             return RawFieldValue::promote(
                 &RawFieldValue::promote(
                     v,
@@ -553,7 +552,6 @@ impl RawFieldValue {
     // We assume here that self has been promoted to the outermost field.
     // We cannot promote inside this method because it is called recursively.
     fn sqrt(&self, context: &FieldTower, recursion: u32) -> Option<RawSqrtResult> {
-        println!("RawFieldValue::sqrt() of [{}] with recursion [{}]", RawFieldValue::to_string(self, context), recursion);
         if recursion >= RECURSION_THRESHOLD {
             panic!("Max recursion depth reached");
         }
@@ -639,7 +637,6 @@ impl RawFieldValue {
     }
 
     fn sqrt_of_zero_base(extension_of_extended: &RawFieldValue, context: &FieldTower, recursion: u32) -> Option<RawSqrtResult> {
-        println!("extension_of_extended={}", FieldValue {value: extension_of_extended.clone(), context: context.clone()}.to_string());
         let root_index = extension_of_extended.num_extensions() as usize;
         let root: &RawFieldValue = &context.data.borrow().roots[root_index];
         let sqrt_of_extension_of_extended: RawSqrtResult =
