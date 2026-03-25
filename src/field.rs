@@ -552,6 +552,7 @@ impl RawFieldValue {
     // We assume here that self has been promoted to the outermost field.
     // We cannot promote inside this method because it is called recursively.
     fn sqrt(&self, context: &FieldTower, recursion: u32) -> Option<RawSqrtResult> {
+        println!("RawFieldValue::sqrt() of [{}] with recursion [{}]", RawFieldValue::to_string(self, context), recursion);
         if recursion >= RECURSION_THRESHOLD {
             panic!("Max recursion depth reached");
         }
@@ -1284,6 +1285,42 @@ mod test {
         let result = original.sqrt().expect("sqrt(17 - 12*sqrt(2)) should exist");
         assert_eq!(tower.data.borrow().roots.len(), 1);
         assert_eq!(result.to_string(), "(3+-2*sqrt(2))");
+    }
+
+    #[ignore]
+    #[test]
+    // Fails due to overflow. I can re-implement with unbounded integers.
+    fn when_multiple_field_extensions_then_root_of_squared_value_can_be_found() {
+        // (7 + 3*sqrt(2) + 5*sqrt(3) + sqrt(1+sqrt(2)))^2
+        //   = 49 + 42*sqrt(2) + 70*sqrt(3) + 14*sqrt(1+sqrt(2)) + 18 + 30*sqrt(6) + 6*sqrt(2+sqrt(2)) + 75 + 10*sqrt(3+sqrt(6)) + 1 + sqrt(2)
+        //   = (49 + 18 + 75 + 1) + (42 + 1)*sqrt(2) + (70 + 30*sqrt(2))*sqrt(3) + (14 + 6*sqrt(2) + 10*sqrt(3))*sqrt(1+sqrt(2))
+        //   = 143 + 43*sqrt(2) + (70 + 30*sqrt(2))*sqrt(3) + (14 + 6*sqrt(2) + 10*sqrt(3))*sqrt(1+sqrt(2))
+        let tower = FieldTower::new();
+        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let sqrt_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
+        let mut three: FieldValue = tower.value(Rational32::new(3, 1));
+        let sqrt_three: FieldValue = three.sqrt().expect("sqrt(3) should exist");
+        let one: FieldValue = tower.value(Rational32::new(1, 1));
+        let mut one_plus_sqrt_two: FieldValue = one.checked_add(&sqrt_two).expect("1 + sqrt(2) should exist");
+        let sqrt_one_plus_sqrt_two: FieldValue = one_plus_sqrt_two.sqrt().expect("sqrt(1+sqrt(2)) should exist");
+        let term1: FieldValue = tower.value(Rational32::new(143, 1));
+        let term2: FieldValue = tower.value(Rational32::new(43, 1)).checked_mul(&sqrt_two).expect("43*sqrt(2) should exist");
+        let term32: FieldValue = tower.value(Rational32::new(30, 1)).checked_mul(&sqrt_two).expect("30*sqrt(2) should exist");
+        let factor3: FieldValue = tower.value(Rational32::new(70, 1)).checked_add(&term32).expect("70 + 30*sqrt(2) should exist");
+        let term3: FieldValue = factor3.checked_mul(&sqrt_three).expect("(70 + 30*sqrt(2))*sqrt(3) should exist");
+        let term42: FieldValue = tower.value(Rational32::new(6, 1)).checked_mul(&sqrt_two).expect("6*sqrt(2) should exist");
+        let term43: FieldValue = tower.value(Rational32::new(10, 1)).checked_mul(&sqrt_three).expect("10*sqrt(3) should exist");
+        let factor42: FieldValue = term42.checked_add(&term3).expect("6*sqrt(2) + 10*sqrt(3) should exist");
+        let factor4: FieldValue = tower.value(Rational32::new(14, 1)).checked_add(&factor42).expect("14 + 6*sqrt(2) + 10*sqrt(3) should exist");
+        let term4: FieldValue = factor4.checked_mul(&sqrt_one_plus_sqrt_two).expect("(14 + 6*sqrt(2) + 10*sqrt(3))*sqrt(1+sqrt(2)) should exist");
+        let result1: FieldValue = term1.checked_add(&term2).expect("term1 + term2 should exist");
+        let result2: FieldValue = result1.checked_add(&term3).expect("term1 + term2 + term3 should exist");
+        let mut square = result2.checked_add(&term4).expect("Value to take root of should exist");
+        assert_eq!(tower.data.borrow().roots.len(), 3);
+        let actual: FieldValue = square.sqrt().expect("Should be able to take the sqrt");
+        assert_eq!(tower.data.borrow().roots.len(), 3);
+        check_integrity(&actual.value, 3);
+        assert_eq!(actual.to_string(), "(((7+3*sqrt(2))+(5+0*sqrt(2))*sqrt(3))+((1+0*sqrt(2))+(0+0*sqrt(2))*sqrt(3))*sqrt(1+sqrt(2)))");
     }
 
     fn check_integrity(v: &RawFieldValue, depth: u32) {
