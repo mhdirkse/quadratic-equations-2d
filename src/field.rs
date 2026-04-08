@@ -3,9 +3,9 @@ use std::cell::RefCell;
 use std::fmt::Debug;
 use std::cmp::Ordering;
 use std::ops::{Add, Sub, Mul, Div};
+use std::u64;
 use num_rational::Rational32;
 use num_traits::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv};
-use crate::sqrt::sqrt;
 
 pub type Base = Rational32;
 
@@ -576,19 +576,43 @@ impl RawFieldValue {
     }
 
     fn sqrt_of_base(base: &Base, _: u32) -> Option<RawSqrtResult> {
-        let result: (Base, u32) = sqrt(base.clone())?;
-        if result.1 == 1 {
-            Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::BASIC(result.0)))
-        } else {
-            if result.1 > (i32::MAX as u32) {
-                Option::None
-            } else {
-                Option::Some(RawSqrtResult::EXTENSION(RawNewRootRequest {
-                    coefficient: RawFieldValue::BASIC(result.0),
-                    root: RawFieldValue::BASIC(Base::new(result.1 as i32, 1))
-                }))
+        // We already checked that base > 0
+        let num = base.numer().clone() as u64;
+        let den = base.denom().clone() as u64;
+        if let Option::Some(num_root) = RawFieldValue::sqrt_u64(num) {
+            if let Option::Some(den_root) = RawFieldValue::sqrt_u64(den) {
+                if num_root <= i32::MAX as u64 && den_root <= i32::MAX as u64 {
+                    return Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::BASIC(Base::new(
+                        num_root as i32, den_root as i32))));
+                } else {
+                    return Option::None;
+                }
             }
         }
+        return Option::Some(RawSqrtResult::EXTENSION(RawNewRootRequest {
+            coefficient: RawFieldValue::BASIC(Base::new(1, 1)),
+            root: RawFieldValue::BASIC(base.clone())
+        }));
+    }
+
+    fn sqrt_u64(value: u64) -> Option<u64> {
+        if value == 0 || value == 1 {
+            return Option::Some(value);
+        };
+        let mut lower: u64 = 1;
+        let mut upper: u64 = 1 << 32;
+        while upper - lower >= 2 {
+            let candidate: u64 = (lower + upper) / 2;
+            let square: u64 = candidate * candidate;
+            if square == value {
+                return Option::Some(candidate);
+            } else if square > value {
+                upper = candidate;
+            } else {
+                lower = candidate;
+            }
+        }
+        return Option::None;
     }
 
     fn sqrt_of_zero_extension(base_of_extended: &RawFieldValue, context: &FieldTower, recursion: u32) -> Option<RawSqrtResult> {
@@ -1024,6 +1048,26 @@ mod test {
         assert_eq!(small.compare_to_zero().expect("Expected Some"), Ordering::Less);
         assert_eq!(big.compare_to_zero().expect("Expected Some"), Ordering::Greater);
         assert_eq!(zero.compare_to_zero().expect("Expected Some"), Ordering::Equal);
+    }
+
+    #[test]
+    fn sqrt_u64() {
+        assert_eq!(RawFieldValue::sqrt_u64(0).expect("sqrt(0) should exist"), 0);
+        assert_eq!(RawFieldValue::sqrt_u64(1).expect("sqrt(1) should exist"), 1);
+        assert_eq!(RawFieldValue::sqrt_u64(4).expect("sqrt(4) should exist"), 2);
+        let root: u64 = u32::MAX as u64 - 1;
+        assert_eq!(RawFieldValue::sqrt_u64(root * root).expect("Maximum root should exist"), root);
+        assert_eq!(RawFieldValue::sqrt_u64(3), Option::None);
+        assert_eq!(RawFieldValue::sqrt_u64(root * root + 1), Option::None);
+    }
+
+    #[test]
+    fn sqrt_rational() {
+        let tower: FieldTower = FieldTower::new();
+        let mut square: FieldValue = tower.value(Rational32::new(18, 8));
+        let root: FieldValue = square.sqrt().expect("sqrt(18/8) should not be out of bounds");
+        assert_eq!(tower.data.borrow().roots.len(), 0);
+        assert_eq!(root.value, RawFieldValue::BASIC(Rational32::new(3, 2)));
     }
 
     #[test]
