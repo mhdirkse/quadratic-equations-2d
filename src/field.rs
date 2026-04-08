@@ -1354,8 +1354,6 @@ mod test {
         assert_eq!(result.to_string(), "(3+-2*sqrt(2))");
     }
 
-    // TODO: Fails due to overflow. We need to use unbounded integers.
-    #[ignore]
     #[test]
     fn when_rationals_are_extended_two_times_then_can_solve_sqrt() {
         // (4 + 3*sqrt(5) + 7*sqrt(6))^2 =
@@ -1385,12 +1383,10 @@ mod test {
         check_integrity(&square.value, 2);
         let actual: FieldValue = square.sqrt().expect("Should be able to take the sqrt");
         check_integrity(&actual.value, 2);
-        assert_eq!("((4+3*sqrt(5)+(7+0*sqrt(5))*sqrt(6))", actual.to_string());
+        assert_eq!("((4+3*sqrt(5))+(7+0*sqrt(5))*sqrt(6))", actual.to_string());
     }
 
-    #[ignore]
     #[test]
-    // Fails due to overflow. I can re-implement with unbounded integers.
     fn when_multiple_field_extensions_then_root_of_squared_value_can_be_found() {
         // (7 + 3*sqrt(2) + 5*sqrt(3) + sqrt(1+sqrt(2)))^2
         //   = 49 + 42*sqrt(2) + 70*sqrt(3) + 14*sqrt(1+sqrt(2)) + 18 + 30*sqrt(6) + 6*sqrt(2+sqrt(2)) + 75 + 10*sqrt(3+sqrt(6)) + 1 + sqrt(2)
