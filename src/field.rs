@@ -4,10 +4,10 @@ use std::fmt::Debug;
 use std::cmp::Ordering;
 use std::ops::{Add, Sub, Mul, Div};
 use std::u64;
-use num_rational::Rational32;
+use num_rational::Rational64;
 use num_traits::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv};
 
-pub type Base = Rational32;
+pub type Base = Rational64;
 
 const RECURSION_THRESHOLD: u32 = 10;
 
@@ -493,7 +493,7 @@ impl RawFieldValue {
 
     fn zero(num_extensions: u32) -> RawFieldValue {
         if num_extensions == 0 {
-            return RawFieldValue::BASIC(Rational32::new(0, 1));
+            return RawFieldValue::BASIC(Rational64::new(0, 1));
         } else {
             return RawFieldValue::EXTENDED(RawExtendedValue {
                 base: Box::new(RawFieldValue::zero(num_extensions - 1)),
@@ -557,7 +557,7 @@ impl RawFieldValue {
         }
         match self.compare_to_zero(context)? {
             Ordering::Less => Option::Some(RawSqrtResult::NOSOLUTION),
-            Ordering::Equal => Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::BASIC(Rational32::new(0, 1)))),
+            Ordering::Equal => Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::BASIC(Rational64::new(0, 1)))),
             Ordering::Greater => {
                 match self {
                     RawFieldValue::BASIC(base) => RawFieldValue::sqrt_of_base(&base, recursion),
@@ -581,12 +581,8 @@ impl RawFieldValue {
         let den = base.denom().clone() as u64;
         if let Option::Some(num_root) = RawFieldValue::sqrt_u64(num) {
             if let Option::Some(den_root) = RawFieldValue::sqrt_u64(den) {
-                if num_root <= i32::MAX as u64 && den_root <= i32::MAX as u64 {
-                    return Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::BASIC(Base::new(
-                        num_root as i32, den_root as i32))));
-                } else {
-                    return Option::None;
-                }
+                return Option::Some(RawSqrtResult::SOLUTION(RawFieldValue::BASIC(Base::new(
+                    num_root as i64, den_root as i64))));
             }
         }
         return Option::Some(RawSqrtResult::EXTENSION(RawNewRootRequest {
@@ -811,10 +807,8 @@ fn is_power_of_two(n: usize) -> bool {
 
 #[cfg(test)]
 mod test {
-    use std::i32;
-
     use crate::field::{FieldTower, FieldValue, RawFieldValue, RawExtendedValue};
-    use num_rational::Rational32;
+    use num_rational::Rational64;
     use num_traits::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv};
     use std::cmp::Ordering;
 
@@ -830,15 +824,15 @@ mod test {
     #[test]
     fn basic_value_has_no_extensions() {
         let tower: FieldTower = FieldTower::new();
-        let basic_value = tower.value(Rational32::new(5, 2));
+        let basic_value = tower.value(Rational64::new(5, 2));
         assert_eq!(basic_value.num_extensions(), 0);
     }
 
     #[test]
     fn value_with_simple_root_has_num_extensions_one_and_can_be_formatted() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
-        let coefficients: Vec<Rational32> = vec![Rational32::new(3, 1), Rational32::new(5, 1)];
+        tower.add_root(tower.value(Rational64::new(2, 1)));
+        let coefficients: Vec<Rational64> = vec![Rational64::new(3, 1), Rational64::new(5, 1)];
         let raw_test_value = RawFieldValue::from_coefficients(&coefficients[..]);
         let test_value: FieldValue = FieldValue {
             context: tower,
@@ -850,14 +844,14 @@ mod test {
     #[test]
     fn values_with_simple_root_can_be_added() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
-        let coefficients_1: Vec<Rational32> = vec![Rational32::new(3, 1), Rational32::new(5, 1)];
+        tower.add_root(tower.value(Rational64::new(2, 1)));
+        let coefficients_1: Vec<Rational64> = vec![Rational64::new(3, 1), Rational64::new(5, 1)];
         let raw_test_value_1 = RawFieldValue::from_coefficients(&coefficients_1[..]);
         let test_value_1 = FieldValue {
             context: tower.clone(),
             value: raw_test_value_1
         };
-        let coefficients_2: Vec<Rational32> = vec![Rational32::new(10, 1), Rational32::new(20, 1)];
+        let coefficients_2: Vec<Rational64> = vec![Rational64::new(10, 1), Rational64::new(20, 1)];
         let raw_test_value_2 = RawFieldValue::from_coefficients(&coefficients_2[..]);
         let test_value_2 = FieldValue {
             context: tower.clone(),
@@ -865,7 +859,7 @@ mod test {
         };
         let optional_result: Option<FieldValue> = test_value_1.checked_add(&test_value_2);
         let result = optional_result.expect("Unexpected overflow");
-        let coefficients_expected: Vec<Rational32> = vec![Rational32::new(13, 1), Rational32::new(25, 1)];
+        let coefficients_expected: Vec<Rational64> = vec![Rational64::new(13, 1), Rational64::new(25, 1)];
         let raw_expected_value = RawFieldValue::from_coefficients(&coefficients_expected[..]);
         let expected_value = FieldValue {
             context: tower,
@@ -878,14 +872,14 @@ mod test {
     #[test]
     fn values_with_simple_root_can_be_subtracted() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
-        let coefficients_1: Vec<Rational32> = vec![Rational32::new(3, 1), Rational32::new(5, 1)];
+        tower.add_root(tower.value(Rational64::new(2, 1)));
+        let coefficients_1: Vec<Rational64> = vec![Rational64::new(3, 1), Rational64::new(5, 1)];
         let raw_test_value_1 = RawFieldValue::from_coefficients(&coefficients_1[..]);
         let test_value_1 = FieldValue {
             context: tower.clone(),
             value: raw_test_value_1
         };
-        let coefficients_2: Vec<Rational32> = vec![Rational32::new(10, 1), Rational32::new(20, 1)];
+        let coefficients_2: Vec<Rational64> = vec![Rational64::new(10, 1), Rational64::new(20, 1)];
         let raw_test_value_2 = RawFieldValue::from_coefficients(&coefficients_2[..]);
         let test_value_2 = FieldValue {
             context: tower.clone(),
@@ -893,7 +887,7 @@ mod test {
         };
         let optional_result: Option<FieldValue> = test_value_1.checked_sub(&test_value_2);
         let result = optional_result.expect("Unexpected overflow");
-        let coefficients_expected: Vec<Rational32> = vec![Rational32::new(-7, 1), Rational32::new(-15, 1)];
+        let coefficients_expected: Vec<Rational64> = vec![Rational64::new(-7, 1), Rational64::new(-15, 1)];
         let raw_expected_value = RawFieldValue::from_coefficients(&coefficients_expected[..]);
         let expected_value = FieldValue {
             context: tower,
@@ -906,18 +900,18 @@ mod test {
     #[test]
     fn when_adding_produces_overflow_then_none_returned() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
+        tower.add_root(tower.value(Rational64::new(2, 1)));
         let big_base = FieldValue {
             context: tower.clone(),
-            value: RawFieldValue::from_coefficients(&vec![Rational32::new(i32::MAX, 1), Rational32::new(1, 1)])
+            value: RawFieldValue::from_coefficients(&vec![Rational64::new(i64::MAX, 1), Rational64::new(1, 1)])
         };
         let big_extended = FieldValue {
             context: tower.clone(),
-            value: RawFieldValue::from_coefficients(&vec![Rational32::new(1, 1), Rational32::new(i32::MAX, 1)])
+            value: RawFieldValue::from_coefficients(&vec![Rational64::new(1, 1), Rational64::new(i64::MAX, 1)])
         };
         let with_coefficients_one = FieldValue {
             context: tower.clone(),
-            value: RawFieldValue::from_coefficients(&vec![Rational32::new(1, 1), Rational32::new(1, 1)])
+            value: RawFieldValue::from_coefficients(&vec![Rational64::new(1, 1), Rational64::new(1, 1)])
         };
         assert_eq!(big_base.checked_add(&with_coefficients_one).is_none(), true);
         assert_eq!(with_coefficients_one.checked_add(&big_base).is_none(), true);
@@ -928,12 +922,12 @@ mod test {
     #[test]
     fn when_values_have_unequal_number_of_extensions_then_can_be_added() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
+        tower.add_root(tower.value(Rational64::new(2, 1)));
         let extended: FieldValue = FieldValue {
             context: tower.clone(),
-            value: RawFieldValue::from_coefficients(&vec![Rational32::new(3, 1), Rational32::new(5, 1)])
+            value: RawFieldValue::from_coefficients(&vec![Rational64::new(3, 1), Rational64::new(5, 1)])
         };
-        let simple: FieldValue = tower.value(Rational32::new(6, 1));
+        let simple: FieldValue = tower.value(Rational64::new(6, 1));
         let result_1: FieldValue = extended.checked_add(&simple).expect("No overflow expected");
         let result_2: FieldValue = simple.checked_add(&extended).expect("No overflow expected");
         let expected_str = "(9+5*sqrt(2))";
@@ -944,14 +938,14 @@ mod test {
     #[test]
     fn values_with_simple_root_can_be_multiplied() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
-        let coefficients_1: Vec<Rational32> = vec![Rational32::new(3, 1), Rational32::new(5, 1)];
+        tower.add_root(tower.value(Rational64::new(2, 1)));
+        let coefficients_1: Vec<Rational64> = vec![Rational64::new(3, 1), Rational64::new(5, 1)];
         let raw_test_value_1 = RawFieldValue::from_coefficients(&coefficients_1[..]);
         let test_value_1 = FieldValue {
             context: tower.clone(),
             value: raw_test_value_1
         };
-        let coefficients_2: Vec<Rational32> = vec![Rational32::new(10, 1), Rational32::new(20, 1)];
+        let coefficients_2: Vec<Rational64> = vec![Rational64::new(10, 1), Rational64::new(20, 1)];
         let raw_test_value_2 = RawFieldValue::from_coefficients(&coefficients_2[..]);
         let test_value_2 = FieldValue {
             context: tower.clone(),
@@ -959,7 +953,7 @@ mod test {
         };
         let optional_result: Option<FieldValue> = test_value_1.checked_mul(&test_value_2);
         let result = optional_result.expect("Unexpected overflow");
-        let coefficients_expected: Vec<Rational32> = vec![Rational32::new(230, 1), Rational32::new(110, 1)];
+        let coefficients_expected: Vec<Rational64> = vec![Rational64::new(230, 1), Rational64::new(110, 1)];
         let raw_expected_value = RawFieldValue::from_coefficients(&coefficients_expected[..]);
         let expected_value = FieldValue {
             context: tower,
@@ -972,18 +966,18 @@ mod test {
     #[test]
     fn when_multiplying_produces_overflow_then_none_returned() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
+        tower.add_root(tower.value(Rational64::new(2, 1)));
         let big_base = FieldValue {
             context: tower.clone(),
-            value: RawFieldValue::from_coefficients(&vec![Rational32::new(i32::MAX, 1), Rational32::new(1, 1)])
+            value: RawFieldValue::from_coefficients(&vec![Rational64::new(i64::MAX, 1), Rational64::new(1, 1)])
         };
         let big_extended = FieldValue {
             context: tower.clone(),
-            value: RawFieldValue::from_coefficients(&vec![Rational32::new(1, 1), Rational32::new(i32::MAX, 1)])
+            value: RawFieldValue::from_coefficients(&vec![Rational64::new(1, 1), Rational64::new(i64::MAX, 1)])
         };
         let multiplier = FieldValue {
             context: tower.clone(),
-            value: RawFieldValue::from_coefficients(&vec![Rational32::new(2, 1), Rational32::new(2, 1)])
+            value: RawFieldValue::from_coefficients(&vec![Rational64::new(2, 1), Rational64::new(2, 1)])
         };
         assert_eq!(big_base.checked_add(&multiplier).is_none(), true);
         assert_eq!(multiplier.checked_add(&big_base).is_none(), true);
@@ -994,12 +988,12 @@ mod test {
     #[test]
     fn when_values_have_unequal_number_of_extensions_then_can_be_multiplied() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
+        tower.add_root(tower.value(Rational64::new(2, 1)));
         let extended: FieldValue = FieldValue {
             context: tower.clone(),
-            value: RawFieldValue::from_coefficients(&vec![Rational32::new(3, 1), Rational32::new(5, 1)])
+            value: RawFieldValue::from_coefficients(&vec![Rational64::new(3, 1), Rational64::new(5, 1)])
         };
-        let simple: FieldValue = tower.value(Rational32::new(6, 1));
+        let simple: FieldValue = tower.value(Rational64::new(6, 1));
         let result_1: FieldValue = extended.checked_mul(&simple).expect("No overflow expected");
         let result_2: FieldValue = simple.checked_mul(&extended).expect("No overflow expected");
         let expected_str = "(18+30*sqrt(2))";
@@ -1013,21 +1007,21 @@ mod test {
     #[test]
     fn values_with_simple_root_can_be_divided() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
+        tower.add_root(tower.value(Rational64::new(2, 1)));
 
-        let coefficients_num: Vec<Rational32> = vec![Rational32::new(230, 1), Rational32::new(110, 1)];
+        let coefficients_num: Vec<Rational64> = vec![Rational64::new(230, 1), Rational64::new(110, 1)];
         let raw_num = RawFieldValue::from_coefficients(&coefficients_num[..]);
         let num = FieldValue {
             context: tower.clone(),
             value: raw_num
         };
-        let coefficients_den: Vec<Rational32> = vec![Rational32::new(3, 1), Rational32::new(5, 1)];
+        let coefficients_den: Vec<Rational64> = vec![Rational64::new(3, 1), Rational64::new(5, 1)];
         let raw_den = RawFieldValue::from_coefficients(&coefficients_den[..]);
         let den = FieldValue {
             context: tower.clone(),
             value: raw_den
         };
-        let coefficients_expected: Vec<Rational32> = vec![Rational32::new(10, 1), Rational32::new(20, 1)];
+        let coefficients_expected: Vec<Rational64> = vec![Rational64::new(10, 1), Rational64::new(20, 1)];
         let raw_expected = RawFieldValue::from_coefficients(&coefficients_expected[..]);
         let expected = FieldValue {
             context: tower.clone(),
@@ -1042,9 +1036,9 @@ mod test {
     #[test]
     fn comparing_rationals() {
         let tower: FieldTower = FieldTower::new();
-        let big: FieldValue = tower.value(Rational32::new(i32::MAX, 1));
-        let small: FieldValue = tower.value(Rational32::new(i32::MIN, 1));
-        let zero: FieldValue = tower.value(Rational32::new(0, 1));
+        let big: FieldValue = tower.value(Rational64::new(i64::MAX, 1));
+        let small: FieldValue = tower.value(Rational64::new(i64::MIN, 1));
+        let zero: FieldValue = tower.value(Rational64::new(0, 1));
         assert_eq!(small.compare_to_zero().expect("Expected Some"), Ordering::Less);
         assert_eq!(big.compare_to_zero().expect("Expected Some"), Ordering::Greater);
         assert_eq!(zero.compare_to_zero().expect("Expected Some"), Ordering::Equal);
@@ -1064,34 +1058,34 @@ mod test {
     #[test]
     fn sqrt_rational() {
         let tower: FieldTower = FieldTower::new();
-        let mut square: FieldValue = tower.value(Rational32::new(18, 8));
+        let mut square: FieldValue = tower.value(Rational64::new(18, 8));
         let root: FieldValue = square.sqrt().expect("sqrt(18/8) should not be out of bounds");
         assert_eq!(tower.data.borrow().roots.len(), 0);
-        assert_eq!(root.value, RawFieldValue::BASIC(Rational32::new(3, 2)));
+        assert_eq!(root.value, RawFieldValue::BASIC(Rational64::new(3, 2)));
     }
 
     #[test]
     fn when_coefficient_root_zero_then_sign_of_nonroot_coefficient_returned() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
+        tower.add_root(tower.value(Rational64::new(2, 1)));
         let positive = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(1, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(0,1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(1, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(0,1))),
             }),
             context: tower.clone(),
         };
         let negative = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(-1, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(0, 1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(-1, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(0, 1))),
             }),
             context: tower.clone(),
         };
         let zero = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(0, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(0, 1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(0, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(0, 1))),
             }),
             context: tower.clone(),
         };
@@ -1106,18 +1100,18 @@ mod test {
     #[test]
     fn when_coefficient_nonroot_zero_then_sign_of_root_coefficient_returned() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
+        tower.add_root(tower.value(Rational64::new(2, 1)));
         let positive = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(0, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(1,1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(0, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(1,1))),
             }),
             context: tower.clone(),
         };
         let negative = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(0, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(-1, 1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(0, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(-1, 1))),
             }),
             context: tower.clone(),
         };
@@ -1130,18 +1124,18 @@ mod test {
     #[test]
     fn when_coefficients_have_same_sign_then_that_sign_returned() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
+        tower.add_root(tower.value(Rational64::new(2, 1)));
         let positive = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(1, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(1,1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(1, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(1,1))),
             }),
             context: tower.clone(),
         };
         let negative = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(-1, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(-1, 1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(-1, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(-1, 1))),
             }),
             context: tower.clone(),
         };
@@ -1154,18 +1148,18 @@ mod test {
     #[test]
     fn when_nonroot_coeff_positive_then_squares_compared() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
+        tower.add_root(tower.value(Rational64::new(2, 1)));
         let positive = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(2, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(-1,1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(2, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(-1,1))),
             }),
             context: tower.clone(),
         };
         let negative = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(2, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(-2, 1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(2, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(-2, 1))),
             }),
             context: tower.clone(),
         };
@@ -1178,18 +1172,18 @@ mod test {
     #[test]
     fn when_nonroot_coeff_negative_then_squares_compared() {
         let mut tower: FieldTower = FieldTower::new();
-        tower.add_root(tower.value(Rational32::new(2, 1)));
+        tower.add_root(tower.value(Rational64::new(2, 1)));
         let positive = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(-2, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(2,1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(-2, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(2,1))),
             }),
             context: tower.clone(),
         };
         let negative = FieldValue {
             value: RawFieldValue::EXTENDED(RawExtendedValue {
-                base: Box::new(RawFieldValue::BASIC(Rational32::new(-2, 1))),
-                extension: Box::new(RawFieldValue::BASIC(Rational32::new(1, 1))),
+                base: Box::new(RawFieldValue::BASIC(Rational64::new(-2, 1))),
+                extension: Box::new(RawFieldValue::BASIC(Rational64::new(1, 1))),
             }),
             context: tower.clone(),
         };
@@ -1202,7 +1196,7 @@ mod test {
     #[test]
     fn when_we_take_sqrt_of_rational_square_we_get_plain_rational() {
         let tower: FieldTower = FieldTower::new();
-        let mut value: FieldValue = tower.value(Rational32::new(4, 1));
+        let mut value: FieldValue = tower.value(Rational64::new(4, 1));
         let sqrt_value: FieldValue = value.sqrt().expect("square root of 4 exists");
         assert_eq!(tower.data.borrow().roots.len(), 0);
         assert_eq!(sqrt_value.num_extensions(), 0);
@@ -1212,16 +1206,16 @@ mod test {
     #[test]
     fn when_we_have_one_extension_we_do_not_unnecessarily_extend() {
         let tower: FieldTower = FieldTower::new();
-        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let mut two: FieldValue = tower.value(Rational64::new(2, 1));
         let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
         assert_eq!(tower.data.borrow().roots.len(), 1);
         assert_eq!(sqrt_of_two.num_extensions(), 1);
         assert_eq!(sqrt_of_two.to_string(), "(0+1*sqrt(2))");
-        let mut promoted_nine: FieldValue = tower.value(Rational32::new(9, 1)).promote();
+        let mut promoted_nine: FieldValue = tower.value(Rational64::new(9, 1)).promote();
         let sqrt_of_nine: FieldValue = promoted_nine.sqrt().expect("sqrt(9) should exist");        
         assert_eq!(sqrt_of_nine.num_extensions(), 1);
         assert_eq!(sqrt_of_nine.to_string(), "(3+0*sqrt(2))");
-        let mut eighteen = tower.value(Rational32::new(18, 1));
+        let mut eighteen = tower.value(Rational64::new(18, 1));
         let sqrt_of_eighteen = eighteen.sqrt().expect("sqrt(18) should exist");
         assert_eq!(sqrt_of_eighteen.num_extensions(), 1);
         assert_eq!(sqrt_of_eighteen.to_string(), "(0+3*sqrt(2))");
@@ -1230,11 +1224,11 @@ mod test {
     #[test]
     fn when_we_have_two_extensions_we_do_not_unnecessarily_extend_roots_of_plain_rationals() {
         let tower: FieldTower = FieldTower::new();
-        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let mut two: FieldValue = tower.value(Rational64::new(2, 1));
         two.sqrt().expect("sqrt(2) should exist");
-        let mut three: FieldValue = tower.value(Rational32::new(3, 1));
+        let mut three: FieldValue = tower.value(Rational64::new(3, 1));
         three.sqrt().expect("sqrt(3) should exist");
-        let mut promoted_four = tower.value(Rational32::new(4, 1)).promote();
+        let mut promoted_four = tower.value(Rational64::new(4, 1)).promote();
         assert_eq!(promoted_four.num_extensions(), 2);
         let sqrt_of_four = promoted_four.sqrt().expect("sqrt(4) should exist");
         assert_eq!(sqrt_of_four.num_extensions(), 2);
@@ -1245,23 +1239,23 @@ mod test {
             panic!("sqrt_of_four is expected to enum RawFieldValue::EXTENDED");
         }
         assert_eq!(sqrt_of_four.to_string(), "((2+0*sqrt(2))+(0+0*sqrt(2))*sqrt(3))");
-        let sqrt_eight: FieldValue = tower.value(Rational32::new(8, 1)).sqrt().expect("sqrt(8) should exist");
+        let sqrt_eight: FieldValue = tower.value(Rational64::new(8, 1)).sqrt().expect("sqrt(8) should exist");
         // Check that sqrt(2) is not added again to the FieldTower.
         assert_eq!(tower.data.borrow().roots.len(), 2);
         assert_eq!(sqrt_eight.to_string(), "((0+2*sqrt(2))+(0+0*sqrt(2))*sqrt(3))");
-        let sqrt_twelve = tower.value(Rational32::new(12, 1)).sqrt().expect("sqrt(12) should exist");
+        let sqrt_twelve = tower.value(Rational64::new(12, 1)).sqrt().expect("sqrt(12) should exist");
         assert_eq!(sqrt_twelve.to_string(), "((0+0*sqrt(2))+(2+0*sqrt(2))*sqrt(3))");
-        let sqrt_six = tower.value(Rational32::new(6, 1)).sqrt().expect("sqrt(6) should exist");
+        let sqrt_six = tower.value(Rational64::new(6, 1)).sqrt().expect("sqrt(6) should exist");
         assert_eq!(sqrt_six.to_string(), "((0+0*sqrt(2))+(0+1*sqrt(2))*sqrt(3))");
     }
 
     #[test]
     fn when_root_taken_with_square_extension_coefficient_then_extension_not_within_new_root() {
         let tower: FieldTower = FieldTower::new();
-        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let mut two: FieldValue = tower.value(Rational64::new(2, 1));
         let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
         let mut four_times_sqrt_two: FieldValue = tower
-            .value(Rational32::new(4, 1))
+            .value(Rational64::new(4, 1))
             .checked_mul(&sqrt_of_two)
             .expect("four times sqrt(2) should not produce overflow");
         let sqrt_of_it = four_times_sqrt_two.sqrt().expect("Should be able to calculate sqrt(4 * sqrt(2))");
@@ -1276,9 +1270,9 @@ mod test {
     #[test]
     fn when_root_of_rational_added_to_already_extended_field_then_is_extension_of_extension() {
         let tower: FieldTower = FieldTower::new();
-        let mut five: FieldValue = tower.value(Rational32::new(5, 1));
+        let mut five: FieldValue = tower.value(Rational64::new(5, 1));
         let sqrt_five: FieldValue = five.sqrt().expect("sqrt(5) should exist");
-        let mut six: FieldValue = tower.value(Rational32::new(6, 1));
+        let mut six: FieldValue = tower.value(Rational64::new(6, 1));
         let sqrt_six: FieldValue = six.sqrt().expect("sqrt(6) should exist");
         assert_eq!("((0+0*sqrt(5))+(1+0*sqrt(5))*sqrt(6))", sqrt_six.to_string());
         check_integrity(&sqrt_six.value, 2);
@@ -1287,9 +1281,9 @@ mod test {
     #[test]
     fn when_root_added_from_outer_field_then_coefficient_has_right_number_of_extensions() {
         let tower: FieldTower = FieldTower::new();
-        let mut five: FieldValue = tower.value(Rational32::new(5, 1));
+        let mut five: FieldValue = tower.value(Rational64::new(5, 1));
         let sqrt_five: FieldValue = five.sqrt().expect("sqrt(5) should exist");
-        let one: FieldValue = tower.value(Rational32::new(1, 1));
+        let one: FieldValue = tower.value(Rational64::new(1, 1));
         let mut one_plus_sqrt_five: FieldValue = one.checked_add(&sqrt_five).expect("1+sqrt(5) should exist");
         let new_sqrt: FieldValue = one_plus_sqrt_five.sqrt().expect("sqrt(1+sqrt(5)) should exist");
         check_integrity(&new_sqrt.value, 2);
@@ -1299,10 +1293,10 @@ mod test {
     #[test]
     fn when_root_taken_with_coefficient_matching_existing_root_then_extension_not_within_new_root() {
         let tower: FieldTower = FieldTower::new();
-        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let mut two: FieldValue = tower.value(Rational64::new(2, 1));
         let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
         let mut two_times_sqrt_two: FieldValue = tower
-            .value(Rational32::new(2, 1))
+            .value(Rational64::new(2, 1))
             .checked_mul(&sqrt_of_two)
             .expect("two times sqrt(2) should not produce overflow");
         let sqrt_of_it: FieldValue = two_times_sqrt_two.sqrt().expect("sqrt(2*sqrt(2)) should exist");
@@ -1316,10 +1310,10 @@ mod test {
     #[test]
     fn when_root_taken_with_coefficient_not_matching_existing_root_then_extension_within_new_root() {
         let tower: FieldTower = FieldTower::new();
-        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let mut two: FieldValue = tower.value(Rational64::new(2, 1));
         let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
         let mut three_times_sqrt_two: FieldValue = tower
-            .value(Rational32::new(3, 1))
+            .value(Rational64::new(3, 1))
             .checked_mul(&sqrt_of_two)
             .expect("three times sqrt(2) should not produce overflow");
         let sqrt_of_it = three_times_sqrt_two.sqrt().expect("sqrt(3*sqrt(2)) should exist");
@@ -1334,9 +1328,9 @@ mod test {
     fn when_complex_root_exists_then_found() {
         // (sqrt(2) - 1)^2 = 3 - 2*sqrt(2);
         let tower: FieldTower = FieldTower::new();
-        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let mut two: FieldValue = tower.value(Rational64::new(2, 1));
         let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
-        let mut original: FieldValue = tower.value(Rational32::new(3, 1)).checked_sub(
+        let mut original: FieldValue = tower.value(Rational64::new(3, 1)).checked_sub(
             &two.checked_mul(&sqrt_of_two).expect("Term should exist"),
         ).expect("Value should exist");
         let result: FieldValue = original.sqrt().expect("sqrt(3 - 2*sqrt(2)) should exist");
@@ -1348,10 +1342,10 @@ mod test {
     fn when_complex_root_with_negative_root_coefficient_exists_then_positive_root_returned() {
         // (3 - 2*sqrt(2))^2 = 17 - 12*sqrt(2)
         let tower: FieldTower = FieldTower::new();
-        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let mut two: FieldValue = tower.value(Rational64::new(2, 1));
         let sqrt_of_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
-        let seventeen = tower.value(Rational32::new(17, 1));
-        let twelve = tower.value(Rational32::new(12, 1));
+        let seventeen = tower.value(Rational64::new(17, 1));
+        let twelve = tower.value(Rational64::new(12, 1));
         let mut original: FieldValue = seventeen.checked_sub(
             &twelve.checked_mul(&sqrt_of_two).expect("12*sqrt(2) should exist")
         ).expect("17 - 12*sqrt(2) should exist");
@@ -1368,19 +1362,19 @@ mod test {
         //     16 + 24*sqrt(5) + 56*sqrt(6) + 45 + 42*sqrt(5)*sqrt(6) + 294 =
         //     355 + 24*sqrt(5) + (56 + 42*sqrt(5))*sqrt(6)
         let tower: FieldTower = FieldTower::new();
-        let mut five: FieldValue = tower.value(Rational32::new(5, 1));
+        let mut five: FieldValue = tower.value(Rational64::new(5, 1));
         let sqrt_five: FieldValue = five.sqrt().expect("sqrt(5) should exist");
-        let mut six: FieldValue = tower.value(Rational32::new(6, 1));
+        let mut six: FieldValue = tower.value(Rational64::new(6, 1));
         let sqrt_six: FieldValue = six.sqrt().expect("sqrt(6) should exist");
         println!("sqrt(6) shows as [{}]", sqrt_six.to_string());
         check_integrity(&sqrt_six.value, 2);
         assert_eq!(tower.data.borrow().roots.len(), 2);
-        let term1: FieldValue = tower.value(Rational32::new(355, 1));
-        let term2: FieldValue = tower.value(Rational32::new(24, 1))
+        let term1: FieldValue = tower.value(Rational64::new(355, 1));
+        let term2: FieldValue = tower.value(Rational64::new(24, 1))
             .checked_mul(&sqrt_five).expect("24*sqrt(5) should exist");
         assert_eq!("(0+24*sqrt(5))", term2.to_string());
-        let term31: FieldValue = tower.value(Rational32::new(56, 1));
-        let term32: FieldValue = tower.value(Rational32::new(42, 1))
+        let term31: FieldValue = tower.value(Rational64::new(56, 1));
+        let term32: FieldValue = tower.value(Rational64::new(42, 1))
             .checked_mul(&sqrt_five).expect("42*sqrt(5) should exist");
         let factor3 = term31.checked_add(&term32).expect("56 + 42*sqrt(5) should exist");
         check_integrity(&factor3.value, 1);
@@ -1403,22 +1397,22 @@ mod test {
         //   = (49 + 18 + 75 + 1) + (42 + 1)*sqrt(2) + (70 + 30*sqrt(2))*sqrt(3) + (14 + 6*sqrt(2) + 10*sqrt(3))*sqrt(1+sqrt(2))
         //   = 143 + 43*sqrt(2) + (70 + 30*sqrt(2))*sqrt(3) + (14 + 6*sqrt(2) + 10*sqrt(3))*sqrt(1+sqrt(2))
         let tower = FieldTower::new();
-        let mut two: FieldValue = tower.value(Rational32::new(2, 1));
+        let mut two: FieldValue = tower.value(Rational64::new(2, 1));
         let sqrt_two: FieldValue = two.sqrt().expect("sqrt(2) should exist");
-        let mut three: FieldValue = tower.value(Rational32::new(3, 1));
+        let mut three: FieldValue = tower.value(Rational64::new(3, 1));
         let sqrt_three: FieldValue = three.sqrt().expect("sqrt(3) should exist");
-        let one: FieldValue = tower.value(Rational32::new(1, 1));
+        let one: FieldValue = tower.value(Rational64::new(1, 1));
         let mut one_plus_sqrt_two: FieldValue = one.checked_add(&sqrt_two).expect("1 + sqrt(2) should exist");
         let sqrt_one_plus_sqrt_two: FieldValue = one_plus_sqrt_two.sqrt().expect("sqrt(1+sqrt(2)) should exist");
-        let term1: FieldValue = tower.value(Rational32::new(143, 1));
-        let term2: FieldValue = tower.value(Rational32::new(43, 1)).checked_mul(&sqrt_two).expect("43*sqrt(2) should exist");
-        let term32: FieldValue = tower.value(Rational32::new(30, 1)).checked_mul(&sqrt_two).expect("30*sqrt(2) should exist");
-        let factor3: FieldValue = tower.value(Rational32::new(70, 1)).checked_add(&term32).expect("70 + 30*sqrt(2) should exist");
+        let term1: FieldValue = tower.value(Rational64::new(143, 1));
+        let term2: FieldValue = tower.value(Rational64::new(43, 1)).checked_mul(&sqrt_two).expect("43*sqrt(2) should exist");
+        let term32: FieldValue = tower.value(Rational64::new(30, 1)).checked_mul(&sqrt_two).expect("30*sqrt(2) should exist");
+        let factor3: FieldValue = tower.value(Rational64::new(70, 1)).checked_add(&term32).expect("70 + 30*sqrt(2) should exist");
         let term3: FieldValue = factor3.checked_mul(&sqrt_three).expect("(70 + 30*sqrt(2))*sqrt(3) should exist");
-        let term42: FieldValue = tower.value(Rational32::new(6, 1)).checked_mul(&sqrt_two).expect("6*sqrt(2) should exist");
-        let term43: FieldValue = tower.value(Rational32::new(10, 1)).checked_mul(&sqrt_three).expect("10*sqrt(3) should exist");
+        let term42: FieldValue = tower.value(Rational64::new(6, 1)).checked_mul(&sqrt_two).expect("6*sqrt(2) should exist");
+        let term43: FieldValue = tower.value(Rational64::new(10, 1)).checked_mul(&sqrt_three).expect("10*sqrt(3) should exist");
         let factor42: FieldValue = term42.checked_add(&term3).expect("6*sqrt(2) + 10*sqrt(3) should exist");
-        let factor4: FieldValue = tower.value(Rational32::new(14, 1)).checked_add(&factor42).expect("14 + 6*sqrt(2) + 10*sqrt(3) should exist");
+        let factor4: FieldValue = tower.value(Rational64::new(14, 1)).checked_add(&factor42).expect("14 + 6*sqrt(2) + 10*sqrt(3) should exist");
         let term4: FieldValue = factor4.checked_mul(&sqrt_one_plus_sqrt_two).expect("(14 + 6*sqrt(2) + 10*sqrt(3))*sqrt(1+sqrt(2)) should exist");
         let result1: FieldValue = term1.checked_add(&term2).expect("term1 + term2 should exist");
         let result2: FieldValue = result1.checked_add(&term3).expect("term1 + term2 + term3 should exist");
